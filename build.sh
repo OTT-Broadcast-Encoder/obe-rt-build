@@ -29,13 +29,10 @@ elif [ "$1" == "104_refactoring" ]; then
 	LIBKLVANC_TAG=104_refactoring
 	LIBKLSCTE35_TAG=104_refactoring
 elif [ "$1" == "vid.obe.1.1" ]; then
-	OBE_TAG=vid.obe.1.1.2
-	LIBKLVANC_TAG=vid.obe.1.1.2
+	OBE_TAG=vid.obe.1.1.3
+	LIBKLVANC_TAG=vid.obe.1.1.3
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
-elif [ "$1" == "a52" ]; then
-	OBE_TAG=""
-	LIBKLVANC_TAG=""
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
+	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
 else
 	echo "Invalid argument"
 	exit 1
@@ -76,6 +73,9 @@ fi
 
 if [ ! -d libmpegts-obe ]; then
 	git clone https://github.com/LTNGlobal-opensource/libmpegts-obe.git
+	if [ "$LIBMPEGTS_TAG" != "" ]; then
+		cd libmpegts-obe && git checkout $LIBMPEGTS_TAG && cd ..
+	fi
 fi
 
 if [ ! -d libyuv ]; then
