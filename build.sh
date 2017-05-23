@@ -42,7 +42,7 @@ else
 fi
 
 if [ ! -d libklvanc ]; then
-	git clone https://github.com/stoth68000/libklvanc.git
+	git clone https://github.com/LTNGlobal-opensource/libklvanc.git
 	if [ "$LIBKLVANC_TAG" != "" ]; then
 		cd libklvanc && git checkout $LIBKLVANC_TAG && cd ..
 	fi
@@ -56,7 +56,7 @@ if [ ! -d libklscte35 ]; then
 fi
 
 if [ ! -d obe-rt ]; then
-	git clone https://github.com/stoth68000/obe-rt.git
+	git clone https://github.com/LTNGlobal-opensource/obe-rt.git
 	if [ "$OBE_TAG" != "" ]; then
 		cd obe-rt && git checkout $OBE_TAG && cd ..
 	fi
@@ -75,7 +75,7 @@ if [ ! -d libav-obe ]; then
 fi
 
 if [ ! -d libmpegts-obe ]; then
-	git clone https://github.com/stoth68000/libmpegts-obe.git
+	git clone https://github.com/LTNGlobal-opensource/libmpegts-obe.git
 fi
 
 if [ ! -d libyuv ]; then
