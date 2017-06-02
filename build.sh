@@ -92,10 +92,6 @@ if [ ! -d libyuv ]; then
 	git clone https://chromium.googlesource.com/libyuv/libyuv
 fi
 
-if [ ! -d obe-bitstream ]; then
-	git clone https://github.com/LTNGlobal-opensource/obe-bitstream.git
-fi
-
 if [ ! -d twolame-0.3.13 ]; then
 	tar zxf twolame-0.3.13.tar.gz
 fi
@@ -104,11 +100,6 @@ if [ ! -d "Blackmagic DeckLink SDK 10.6.5" ]; then
 	unzip Blackmagic_DeckLink_SDK_10.6.5.zip
 	ln -fs 'Blackmagic DeckLink SDK 10.6.5' decklink-sdk
 fi
-
-
-pushd obe-bitstream
-	make PREFIX=$PWD/../target-root/usr/local install
-popd
 
 pushd libklvanc
 	./autogen.sh --build
@@ -162,10 +153,6 @@ pushd libyuv
 	make -f linux.mk
 	cp -r include/* $PWD/../target-root/usr/local/include
 	cp libyuv.a $PWD/../target-root/usr/local/lib
-popd
-
-pushd obe-bitstream
-	make PREFIX=$PWD/../target-root/usr/local install
 popd
 
 pushd obe-rt
