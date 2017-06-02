@@ -38,6 +38,11 @@ elif [ "$1" == "52workaround" ]; then
 	LIBKLVANC_TAG=vid.obe.1.1.5
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
 	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
+elif [ "$1" == "audio-offset" ]; then
+	OBE_TAG=audio-offset
+	LIBKLVANC_TAG=vid.obe.1.1.5
+	LIBKLSCTE35_TAG=vid.obe.1.1.2
+	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
 else
 	echo "Invalid argument"
 	exit 1
