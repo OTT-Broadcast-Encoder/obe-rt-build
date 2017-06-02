@@ -155,13 +155,28 @@ pushd libyuv
 	cp libyuv.a $PWD/../target-root/usr/local/lib
 popd
 
-pushd obe-rt
-	export CFLAGS="-I$PWD/../target-root/usr/local/include -I$PWD/../decklink-sdk/Linux"
-	export LDFLAGS="-L$PWD/../target-root/usr/local/lib"
-	export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
-	./autogen.sh --build
-	./configure --prefix=$PWD/../target-root/usr/local
-	make -j$JOBS
-	make install
-popd
+if [ "$1" == "customerd" ]; then
+	pushd obe-rt
+		export CXXFLAGS="-I$PWD/../target-root/usr/local/include -ldl"
+		export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
+		./configure \
+			--extra-ldflags="-L$PWD/../target-root/usr/local/lib -lfdk-aac -lavutil -lasound -lyuv -lklvanc" \
+			--extra-cflags="-I$PWD/../target-root/usr/local/include -ldl" \
+			--extra-cxxflags="-I$PWD/../decklink-sdk/Linux"
+		make
+		DESTDIR=$PWD/../target-root make install
+	popd
+else
+	pushd obe-rt
+		export CFLAGS="-I$PWD/../target-root/usr/local/include -I$PWD/../decklink-sdk/Linux"
+		export LDFLAGS="-L$PWD/../target-root/usr/local/lib"
+		export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
+		if [ -f autogen.sh ]; then
+			./autogen.sh --build
+		fi
+		./configure --prefix=$PWD/../target-root/usr/local
+		make -j$JOBS
+		make install
+	popd
+fi
 
