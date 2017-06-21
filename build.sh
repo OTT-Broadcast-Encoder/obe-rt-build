@@ -94,7 +94,7 @@ if [ ! -d libmpegts-obe ]; then
 fi
 
 if [ ! -d libyuv ]; then
-	git clone https://chromium.googlesource.com/libyuv/libyuv
+	git clone https://github.com/LTNGlobal-opensource/libyuv.git
 fi
 
 if [ ! -d twolame-0.3.13 ]; then
