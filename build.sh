@@ -58,6 +58,11 @@ elif [ "$1" == "ac3crc" ]; then
 	LIBKLVANC_TAG=vid.obe.1.1.5
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
 	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
+elif [ "$1" == "1080p60" ]; then
+	OBE_TAG=1080p60
+	LIBKLVANC_TAG=vid.obe.1.1.5
+	LIBKLSCTE35_TAG=vid.obe.1.1.2
+	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
 else
 	echo "Invalid argument"
 	exit 1
