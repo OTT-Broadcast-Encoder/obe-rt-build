@@ -73,6 +73,11 @@ else
 	exit 1
 fi
 
+if [ ! -d bmsdk ]; then
+	git clone https://github.com/LTNGlobal-opensource/bmsdk.git
+	ln -fs 'bmsdk/Blackmagic DeckLink SDK 10.8.5' decklink-sdk
+fi
+
 if [ ! -d libklvanc ]; then
 	git clone https://github.com/LTNGlobal-opensource/libklvanc.git
 	if [ "$LIBKLVANC_TAG" != "" ]; then
@@ -119,11 +124,6 @@ fi
 
 if [ ! -d twolame-0.3.13 ]; then
 	tar zxf twolame-0.3.13.tar.gz
-fi
-
-if [ ! -d "Blackmagic DeckLink SDK 10.6.5" ]; then
-	unzip Blackmagic_DeckLink_SDK_10.6.5.zip
-	ln -fs 'Blackmagic DeckLink SDK 10.6.5' decklink-sdk
 fi
 
 pushd libklvanc

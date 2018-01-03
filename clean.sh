@@ -12,3 +12,4 @@ rm -rf 	x264-obe
 rm -rf 	obe-bitstream
 rm -rf 	libklvanc
 rm -rf 	libklscte35
+rm -rf 	bmsdk
