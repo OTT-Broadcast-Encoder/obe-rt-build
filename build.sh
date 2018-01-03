@@ -80,7 +80,7 @@ fi
 
 if [ ! -d bmsdk ]; then
 	git clone https://github.com/LTNGlobal-opensource/bmsdk.git
-	ln -fs 'bmsdk/Blackmagic DeckLink SDK 10.8.5' decklink-sdk
+	ln -fs bmsdk/10.8.5 decklink-sdk
 fi
 
 if [ ! -d libklvanc ]; then
