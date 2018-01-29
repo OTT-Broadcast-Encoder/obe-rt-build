@@ -81,6 +81,10 @@ fi
 if [ ! -d bmsdk ]; then
 	git clone https://github.com/LTNGlobal-opensource/bmsdk.git
 	ln -fs bmsdk/10.8.5 decklink-sdk
+
+	# Uncomment these to build with 10.1
+	#rm decklink-sdk
+	#ln -fs bmsdk/10.1 decklink-sdk
 fi
 
 if [ ! -d libklvanc ]; then
