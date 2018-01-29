@@ -18,6 +18,7 @@ JOBS=8
 if [ "$1" == "" ]; then
 	# Fine if they do not specify a tag
 	echo "No specific tag specified.  Using master"
+	OBE_TAG=master
 elif [ "$1" == "experimental" ]; then
 	OBE_TAG=experimental
 elif [ "$1" == "customerd" ]; then
@@ -77,15 +78,18 @@ else
 	echo "Invalid argument"
 	exit 1
 fi
+BMSDK_REPO=https://github.com/LTNGlobal-opensource/bmsdk.git
 
 if [ ! -d bmsdk ]; then
-	git clone https://github.com/LTNGlobal-opensource/bmsdk.git
-	ln -fs bmsdk/10.8.5 decklink-sdk
-
-	# Uncomment these to build with 10.1
-	#rm decklink-sdk
-	#ln -fs bmsdk/10.1 decklink-sdk
+    git clone $BMSDK_REPO
 fi
+if [ `uname -s` = "Darwin" ]; then
+    PLAT=Mac
+else
+    PLAT=Linux
+fi
+BMSDK_10_8_5=$PWD/bmsdk/10.8.5/$PLAT
+BMSDK_10_1_1=$PWD/bmsdk/10.1.1/$PLAT
 
 if [ ! -d libklvanc ]; then
 	git clone https://github.com/LTNGlobal-opensource/libklvanc.git
@@ -189,28 +193,41 @@ pushd libyuv
 	cp libyuv.a $PWD/../target-root/usr/local/lib
 popd
 
-if [ "$1" == "customerd" ]; then
-	pushd obe-rt
-		export CXXFLAGS="-I$PWD/../target-root/usr/local/include -ldl"
-		export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
-		./configure \
-			--extra-ldflags="-L$PWD/../target-root/usr/local/lib -lfdk-aac -lavutil -lasound -lyuv -lklvanc" \
-			--extra-cflags="-I$PWD/../target-root/usr/local/include -ldl" \
-			--extra-cxxflags="-I$PWD/../decklink-sdk/Linux"
-		make
-		DESTDIR=$PWD/../target-root make install
-	popd
-else
-	pushd obe-rt
-		export CFLAGS="-I$PWD/../target-root/usr/local/include -I$PWD/../decklink-sdk/Linux"
-		export LDFLAGS="-L$PWD/../target-root/usr/local/lib"
-		export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
-		if [ -f autogen.sh ]; then
-			./autogen.sh --build
-		fi
-		./configure --prefix=$PWD/../target-root/usr/local
-		make -j$JOBS
-		make install
-	popd
-fi
+build_obe() {
+    GITVER=`echo $1 | sed 's/^vid.obe.//'`
+    BMSDK_DIR=$2
+    BMVERSION=`cat $BMSDK_DIR/include/DeckLinkAPIVersion.h | grep BLACKMAGIC_DECKLINK_API_VERSION_STRING | awk '{print $3}'|sed -e 's/^"//' -e 's/"$//'`
 
+    echo "Building OBE $GITVER for BlackMagic SDK version $BMVERSION"
+
+    if [ "$1" == "customerd" ]; then
+	pushd obe-rt
+	export CXXFLAGS="-I$PWD/../target-root/usr/local/include -ldl"
+	export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
+	./configure \
+		--extra-ldflags="-L$PWD/../target-root/usr/local/lib -lfdk-aac -lavutil -lasound -lyuv -lklvanc" \
+		--extra-cflags="-I$PWD/../target-root/usr/local/include -ldl" \
+		--extra-cxxflags="-I$BMSDK_DIR"
+	make clean
+	make
+	DESTDIR=$PWD/../target-root make install
+	popd
+    else
+	pushd obe-rt
+	export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_DIR"
+	export LDFLAGS="-L$PWD/../target-root/usr/local/lib"
+	export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
+	if [ -f autogen.sh ]; then
+		./autogen.sh --build
+	fi
+	./configure --prefix=$PWD/../target-root/usr/local
+	make clean
+	make -j$JOBS
+	make install
+	popd
+	cp target-root/usr/local/bin/obecli obecli-$GITVER-bm$BMVERSION
+    fi
+}
+
+build_obe $OBE_TAG $BMSDK_10_8_5
+build_obe $OBE_TAG $BMSDK_10_1_1
