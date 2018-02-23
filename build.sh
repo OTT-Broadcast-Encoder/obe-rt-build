@@ -8,12 +8,13 @@ JOBS=8
 #yum install libz-devel 
 #yum install bzip2-devel
 #yum install readline-devel
-#yum install zvbi-devel
 #yum install ncurses-static
 #yum install readline-static
 #yum install alsa-lib-devel
 #yum install pulseaudio-libs-devel
 #perl -MCPAN -e 'install Digest::Perl::MD5'
+
+LIBZVBI_TAG=e62d905e00cdd1d6d4333ead90fb5b44bfb49371
 
 if [ "$1" == "" ]; then
 	# Fine if they do not specify a tag
@@ -96,6 +97,13 @@ fi
 BMSDK_10_8_5=$PWD/bmsdk/10.8.5/$PLAT
 BMSDK_10_1_1=$PWD/bmsdk/10.1.1/$PLAT
 
+if [ ! -d libzvbi ]; then
+	git clone https://github.com/LTNGlobal-opensource/libzvbi.git
+	if [ "$LIBZVBI_TAG" != "" ]; then
+		cd libzvbi && git checkout $LIBZVBI_TAG && cd ..
+	fi
+fi
+
 if [ ! -d libklvanc ]; then
 	git clone https://github.com/LTNGlobal-opensource/libklvanc.git
 	if [ "$LIBKLVANC_TAG" != "" ]; then
@@ -143,6 +151,12 @@ fi
 if [ ! -d twolame-0.3.13 ]; then
 	tar zxf twolame-0.3.13.tar.gz
 fi
+
+pushd libzvbi
+	./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local
+	make && make install
+	make install
+popd
 
 pushd libklvanc
 	./autogen.sh --build
