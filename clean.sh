@@ -15,3 +15,4 @@ rm -rf 	libklscte35
 rm -rf 	bmsdk
 rm -rf  obecli-*
 rm -rf  libzvbi
+rm -rf  x265
