@@ -2,6 +2,8 @@
 
 JOBS=8
 
+#yum install libtool
+#yum install libpng
 #yum install yasm
 #yum install perl-CPAN
 #yum install perl-Digest-MD5
