@@ -17,6 +17,8 @@ JOBS=8
 #perl -MCPAN -e 'install Digest::Perl::MD5'
 
 LIBZVBI_TAG=e62d905e00cdd1d6d4333ead90fb5b44bfb49371
+X265_TAG=95d81a19c92f0b37b292ff2f7e5192806546f1dd
+BUILD_X265=0
 
 if [ "$1" == "" ]; then
 	# Fine if they do not specify a tag
@@ -52,6 +54,12 @@ elif [ "$1" == "new.1.1.15" ]; then
 	LIBKLVANC_TAG=vid.obe.1.1.5
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
 	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
+elif [ "$1" == "hevc" ]; then
+	OBE_TAG=x265
+	LIBKLVANC_TAG=vid.obe.1.1.5
+	LIBKLSCTE35_TAG=vid.obe.1.1.2
+	LIBMPEGTS_TAG=hevc-dev
+	BUILD_X265==1
 elif [ "$1" == "52workaround" ]; then
 	OBE_TAG=52workaround
 	LIBKLVANC_TAG=vid.obe.1.1.5
@@ -114,6 +122,13 @@ fi
 BMSDK_10_8_5=$PWD/bmsdk/10.8.5/$PLAT
 BMSDK_10_1_1=$PWD/bmsdk/10.1.1/$PLAT
 
+if [ $BUILD_X265 -eq 1 ]; then
+	if [ ! -d x265 ]; then
+		git clone https://github.com/videolan/x265.git
+		cd x265 && git checkout $X265_TAG && cd ..
+	fi
+fi
+
 if [ ! -d libzvbi ]; then
 	git clone https://github.com/LTNGlobal-opensource/libzvbi.git
 	if [ "$LIBZVBI_TAG" != "" ]; then
@@ -167,6 +182,15 @@ fi
 
 if [ ! -d twolame-0.3.13 ]; then
 	tar zxf twolame-0.3.13.tar.gz
+fi
+
+if [ $BUILD_X265 -eq 1 ]; then
+	pushd x265/build/linux
+		#./make-Makefiles.bash
+		cmake -DCMAKE_INSTALL_PREFIX=$PWD/../../../target-root/usr/local -G "Unix Makefiles" ../../source
+		make -j8
+		make install
+	popd
 fi
 
 pushd libzvbi
