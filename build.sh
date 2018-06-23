@@ -59,7 +59,7 @@ elif [ "$1" == "hevc" ]; then
 	LIBKLVANC_TAG=vid.obe.1.1.5
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
 	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265==1
+	BUILD_X265=1
 elif [ "$1" == "52workaround" ]; then
 	OBE_TAG=52workaround
 	LIBKLVANC_TAG=vid.obe.1.1.5
