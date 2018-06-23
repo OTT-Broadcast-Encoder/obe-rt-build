@@ -2,20 +2,6 @@
 
 JOBS=8
 
-#yum install libtool
-#yum install libpng
-#yum install yasm
-#yum install perl-CPAN
-#yum install perl-Digest-MD5
-#yum install libz-devel 
-#yum install bzip2-devel
-#yum install readline-devel
-#yum install ncurses-static
-#yum install readline-static
-#yum install alsa-lib-devel
-#yum install pulseaudio-libs-devel
-#perl -MCPAN -e 'install Digest::Perl::MD5'
-
 LIBZVBI_TAG=e62d905e00cdd1d6d4333ead90fb5b44bfb49371
 X265_TAG=95d81a19c92f0b37b292ff2f7e5192806546f1dd
 BUILD_X265=0
@@ -24,6 +10,21 @@ if [ "$1" == "" ]; then
 	# Fine if they do not specify a tag
 	echo "No specific tag specified.  Using master"
 	OBE_TAG=master
+elif [ "$1" == "--installdeps" ]; then
+	sudo yum -y install libtool
+	sudo yum -y install libpng
+	sudo yum -y install yasm
+	sudo yum -y install perl-CPAN
+	sudo yum -y install perl-Digest-MD5
+	sudo yum -y install zlib
+	sudo yum -y install bzip2-devel
+	sudo yum -y install readline-devel
+	sudo yum -y install ncurses-static
+	sudo yum -y install readline-static
+	sudo yum -y install alsa-lib-devel
+	sudo yum -y install pulseaudio-libs-devel
+	sudo perl -MCPAN -e 'install Digest::Perl::MD5'
+	exit 0
 elif [ "$1" == "experimental" ]; then
 	OBE_TAG=experimental
 elif [ "$1" == "customerd" ]; then
