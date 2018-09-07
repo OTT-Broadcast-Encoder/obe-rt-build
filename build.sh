@@ -36,7 +36,7 @@ elif [ "$1" == "104_refactoring" ]; then
 	LIBKLVANC_TAG=104_refactoring
 	LIBKLSCTE35_TAG=104_refactoring
 elif [ "$1" == "vid.obe.1.1" ]; then
-	OBE_TAG=vid.obe.1.1.17
+	OBE_TAG=vid.obe.1.1.18
 	LIBKLVANC_TAG=vid.obe.1.1.5
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
 	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
@@ -57,6 +57,11 @@ elif [ "$1" == "vid.obe.1.1.15" ]; then
 	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
 elif [ "$1" == "vid.obe.1.1.16" ]; then
 	OBE_TAG=vid.obe.1.1.16
+	LIBKLVANC_TAG=vid.obe.1.1.5
+	LIBKLSCTE35_TAG=vid.obe.1.1.2
+	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
+elif [ "$1" == "vid.obe.1.1.18" ]; then
+	OBE_TAG=vid.obe.1.1.18
 	LIBKLVANC_TAG=vid.obe.1.1.5
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
 	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
