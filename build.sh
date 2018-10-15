@@ -66,6 +66,11 @@ elif [ "$1" == "vid.obe.1.1.18" ]; then
 	LIBKLVANC_TAG=vid.obe.1.1.5
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
 	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
+elif [ "$1" == "1.1.21" ]; then
+	OBE_TAG=1.1.21
+	LIBKLVANC_TAG=vid.obe.1.1.5
+	LIBKLSCTE35_TAG=vid.obe.1.1.2
+	LIBMPEGTS_TAG=hevc-dev
 elif [ "$1" == "hevc" ]; then
 	OBE_TAG=x265
 	LIBKLVANC_TAG=vid.obe.1.1.5
