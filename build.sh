@@ -208,6 +208,8 @@ if [ $BUILD_X265 -eq 1 ]; then
 		make -j8
 		make install
 	popd
+	# Remove these, we want a static link. TODO: X265 cfg build opt?
+	rm -f target-root/usr/local/lib/libx265.so*
 fi
 
 pushd libzvbi
