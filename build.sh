@@ -11,12 +11,15 @@ if [ "$1" == "" ]; then
 	echo "No specific tag specified.  Using master"
 	OBE_TAG=master
 elif [ "$1" == "--installdeps" ]; then
+	# We need epel for YASM
+	sudo yum -y install epel-release
+	sudo yum repolist
 	sudo yum -y install libtool
 	sudo yum -y install libpng
 	sudo yum -y install yasm
 	sudo yum -y install perl-CPAN
 	sudo yum -y install perl-Digest-MD5
-	sudo yum -y install zlib
+	sudo yum -y install zlib-devel
 	sudo yum -y install bzip2-devel
 	sudo yum -y install readline-devel
 	sudo yum -y install ncurses-static
