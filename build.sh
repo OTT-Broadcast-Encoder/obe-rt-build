@@ -44,6 +44,12 @@ elif [ "$1" == "vid.obe.1.1" ]; then
 	LIBKLVANC_TAG=vid.obe.1.1.5
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
 	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
+elif [ "$1" == "vid.obe.2.0" ]; then
+	OBE_TAG=vid.obe.2.0.2
+	LIBKLVANC_TAG=vid.obe.1.1.5
+	LIBKLSCTE35_TAG=vid.obe.1.1.2
+	LIBMPEGTS_TAG=hevc-dev
+	BUILD_X265=1
 elif [ "$1" == "vid.obe.1.1.12" ]; then
 	OBE_TAG=vid.obe.1.1.12
 	LIBKLVANC_TAG=vid.obe.1.1.5
@@ -74,12 +80,6 @@ elif [ "$1" == "1.1.21" ]; then
 	LIBKLVANC_TAG=vid.obe.1.1.5
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
 	LIBMPEGTS_TAG=hevc-dev
-elif [ "$1" == "vid.obe.2.0.0" ]; then
-	OBE_TAG=2.0.0
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
 elif [ "$1" == "52workaround" ]; then
 	OBE_TAG=52workaround
 	LIBKLVANC_TAG=vid.obe.1.1.5
