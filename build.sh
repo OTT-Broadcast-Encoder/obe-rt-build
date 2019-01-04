@@ -17,6 +17,7 @@ elif [ "$1" == "--installdeps" ]; then
 	sudo yum -y install libtool
 	sudo yum -y install libpng
 	sudo yum -y install yasm
+	sudo yum -y install cmake
 	sudo yum -y install perl-CPAN
 	sudo yum -y install perl-Digest-MD5
 	sudo yum -y install zlib-devel
