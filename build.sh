@@ -46,7 +46,7 @@ elif [ "$1" == "vid.obe.1.1" ]; then
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
 	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
 elif [ "$1" == "vid.obe.2.0" ]; then
-	OBE_TAG=vid.obe.2.0.5
+	OBE_TAG=vid.obe.2.0.7
 	LIBKLVANC_TAG=vid.obe.1.1.5
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
 	LIBMPEGTS_TAG=hevc-dev
