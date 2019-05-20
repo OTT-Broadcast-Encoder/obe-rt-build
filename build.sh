@@ -13,6 +13,8 @@ if [ "$1" == "" ]; then
 elif [ "$1" == "--installdeps" ]; then
 	# We need epel for YASM
 	sudo yum -y install epel-release
+	sudo yum-config-manager --add-repo http://www.nasm.us/nasm.repo
+	sudo yum -y install nasm
 	sudo yum repolist
 	sudo yum -y install libtool
 	sudo yum -y install libpng
