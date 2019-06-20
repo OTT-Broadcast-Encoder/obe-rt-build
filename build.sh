@@ -96,51 +96,6 @@ elif [ "$1" == "1.1.21" ]; then
 	LIBKLVANC_TAG=vid.obe.1.1.5
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
 	LIBMPEGTS_TAG=hevc-dev
-elif [ "$1" == "52workaround" ]; then
-	OBE_TAG=52workaround
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
-elif [ "$1" == "audio-offset" ]; then
-	OBE_TAG=audio-offset
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
-elif [ "$1" == "syslog-string" ]; then
-	OBE_TAG=syslog-string
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
-elif [ "$1" == "ac3crc" ]; then
-	OBE_TAG=ac3crc
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
-elif [ "$1" == "1080p60" ]; then
-	OBE_TAG=1080p60
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
-elif [ "$1" == "shortaudio" ]; then
-	OBE_TAG=shortaudio
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
-elif [ "$1" == "ac3disconnect" ]; then
-	OBE_TAG=ac3disconnect
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
-elif [ "$1" == "ac3offset" ]; then
-	OBE_TAG=ac3offset
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
-elif [ "$1" == "mux-rework" ]; then
-	OBE_TAG=mux-rework
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
 else
 	echo "Invalid argument"
 	exit 1
