@@ -5,6 +5,7 @@ export LDFLAGS="-L$PREFIX/lib"
 export PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig
 
 if [ ! -f .deps ]; then
+	sudo yum -y install libwayland-client
 	sudo yum -y install libpciaccess-devel
 	sudo yum -y install xorg-x11-drv-intel
 	sudo yum -y install libXext-devel
