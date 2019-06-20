@@ -31,7 +31,7 @@ elif [ "$1" == "--installdeps" ]; then
 	sudo yum -y install alsa-lib-devel
 	sudo yum -y install pulseaudio-libs-devel
 	sudo yum -y install libpciaccess-devel
-	sudo perl -MCPAN -e 'install Digest::Perl::MD5'
+	#sudo perl -MCPAN -e 'install Digest::Perl::MD5'
 	exit 0
 elif [ "$1" == "experimental" ]; then
 	OBE_TAG=experimental
