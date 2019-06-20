@@ -51,7 +51,7 @@ elif [ "$1" == "vid.obe.1.1" ]; then
 elif [ "$1" == "vid.obe.2.0.11" ]; then
 	OBE_TAG=vid.obe.2.0.11
 	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
+	LIBKLSCTE35_TAG=vid.obe.1.2.0
 	LIBMPEGTS_TAG=hevc-dev
 	BUILD_X265=1
 elif [ "$1" == "vid.obe.2.0.12" ]; then
@@ -62,8 +62,8 @@ elif [ "$1" == "vid.obe.2.0.12" ]; then
 	BUILD_X265=1
 elif [ "$1" == "vid.obe.2.0" ]; then
 	OBE_TAG=2.0.0
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
+	LIBKLVANC_TAG=vid.obe.1.2.1
+	LIBKLSCTE35_TAG=vid.obe.1.2.0
 	LIBMPEGTS_TAG=hevc-dev
 	BUILD_X265=1
 elif [ "$1" == "vid.obe.1.1.12" ]; then
