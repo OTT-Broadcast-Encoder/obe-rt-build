@@ -1,20 +1,12 @@
 #!/bin/bash -ex
 
-#
-# pushd libwebsockets
-# mkdir build
-# cd build
-# cmake -DCMAKE_INSTALL_PREFIX:PATH=$PWD/../../target-root/usr/local ..
-# make -j$JOBS
-# make install
-# popd
-# rm target-root/usr/local/libwebsockets.so*
-
 JOBS=8
 
 LIBZVBI_TAG=e62d905e00cdd1d6d4333ead90fb5b44bfb49371
 X265_TAG=95d81a19c92f0b37b292ff2f7e5192806546f1dd
 BUILD_X265=0
+BUILD_LIBWEBSOCKETS=0
+LIBWEBSOCKETS_TAG=master
 
 if [ "$1" == "" ]; then
 	# Fine if they do not specify a tag
@@ -135,6 +127,13 @@ fi
 BMSDK_10_8_5=$PWD/bmsdk/10.8.5/$PLAT
 BMSDK_10_1_1=$PWD/bmsdk/10.1.1/$PLAT
 
+if [ $BUILD_LIBWEBSOCKETS -eq 1 ]; then
+	if [ ! -d libwebsockets ]; then
+		git clone https://libwebsockets.org/repo/libwebsockets
+		cd libwebsockets && git checkout $LIBWEBSOCKETS_TAG && cd ..
+	fi
+fi
+
 if [ $BUILD_X265 -eq 1 ]; then
 	if [ ! -d x265 ]; then
 		git clone https://github.com/videolan/x265.git
@@ -195,6 +194,16 @@ fi
 
 if [ ! -d twolame-0.3.13 ]; then
 	tar zxf twolame-0.3.13.tar.gz
+fi
+
+if [ $BUILD_LIBWEBSOCKETS -eq 1 ]; then
+	pushd libwebsockets
+		mkdir build
+		cd build
+		cmake -DCMAKE_INSTALL_PREFIX:PATH=$PWD/../../target-root/usr/local ..
+		make -j$JOBS
+		make install
+	popd
 fi
 
 if [ $BUILD_X265 -eq 1 ]; then

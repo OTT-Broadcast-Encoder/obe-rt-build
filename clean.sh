@@ -16,3 +16,4 @@ rm -rf 	bmsdk
 rm -rf  obecli-*
 rm -rf  libzvbi
 rm -rf  x265
+rm -rf  libwebsockets
