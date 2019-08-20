@@ -1,5 +1,15 @@
 #!/bin/bash -ex
 
+#
+# pushd libwebsockets
+# mkdir build
+# cd build
+# cmake -DCMAKE_INSTALL_PREFIX:PATH=$PWD/../../target-root/usr/local ..
+# make -j$JOBS
+# make install
+# popd
+# rm target-root/usr/local/libwebsockets.so*
+
 JOBS=8
 
 LIBZVBI_TAG=e62d905e00cdd1d6d4333ead90fb5b44bfb49371
