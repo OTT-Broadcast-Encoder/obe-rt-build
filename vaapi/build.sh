@@ -28,16 +28,16 @@ if [ ! -d intel-vaapi-driver ]; then
 	git clone https://github.com/intel/intel-vaapi-driver.git
 fi
 
-if [ ! -f libdrm-2.4.92.tar.gz ]; then
-	wget https://dri.freedesktop.org/libdrm/libdrm-2.4.92.tar.gz
+if [ ! -f libdrm-2.4.99.tar.gz ]; then
+	wget https://dri.freedesktop.org/libdrm/libdrm-2.4.99.tar.gz
 fi
 
-if [ ! -d libdrm-2.4.92 ]; then
-	tar zxf libdrm-2.4.92.tar.gz
+if [ ! -d libdrm-2.4.99 ]; then
+	tar zxf libdrm-2.4.99.tar.gz
 fi
 
 
-pushd libdrm-2.4.92
+pushd libdrm-2.4.99
 	if [ ! -f .skip ]; then
 		export CFLAGS="-I$PREFIX/include"
 		export CXXFLAGS=$CFLAGS
