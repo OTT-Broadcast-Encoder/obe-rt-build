@@ -10,7 +10,15 @@ if [ ! -f .deps ]; then
 	sudo yum -y install xorg-x11-drv-intel
 	sudo yum -y install libXext-devel
 	sudo yum -y install libXfixes-devel
+	sudo yum -y install xorg-x11-util-macros
+
+	# intel_gpu_top command needs kernels 4.18 or higher.
+	sudo yum -y install kmod-devel procps-ng-devel libunwind-devel elfutils-devel cairo-devel libudev-devel
 	touch .deps
+fi
+
+if [ ! -d intel-gpu-tools ]; then
+	git clone git://anongit.freedesktop.org/xorg/app/intel-gpu-tools
 fi
 
 if [ ! -d libva ]; then
@@ -79,6 +87,18 @@ popd
 
 
 pushd intel-vaapi-driver
+	if [ ! -f .skip ]; then
+		export CFLAGS="-I$PREFIX/include"
+		export CXXFLAGS=$CFLAGS
+		./autogen.sh
+		./configure --prefix=$PREFIX
+		make
+		make install
+		touch .skip
+	fi
+popd
+
+pushd intel-gpu-tools
 	if [ ! -f .skip ]; then
 		export CFLAGS="-I$PREFIX/include"
 		export CXXFLAGS=$CFLAGS
