@@ -7,6 +7,23 @@ X265_TAG=95d81a19c92f0b37b292ff2f7e5192806546f1dd
 BUILD_X265=0
 BUILD_LIBWEBSOCKETS=0
 LIBWEBSOCKETS_TAG=master
+#BUILD_JSONC=1
+
+# https://github.com/json-c/json-c.git
+# cd json-c
+# ./autogen.sh
+# ./configure --prefix=$PWD/../target-root/usr/local --enable-shared=no
+# make
+# make install
+
+# https://github.com/libjpeg-turbo/libjpeg-turbo.git
+# cd libjpeg-turbo
+# mkdir build
+# cd build
+# cmake -G"Unix Makefiles" -DCMAKE_INSTALL_PREFIX:PATH=$PWD/../../target-root/usr/local ..
+# make
+# make install
+
 
 if [ "$1" == "" ]; then
 	# Fine if they do not specify a tag
