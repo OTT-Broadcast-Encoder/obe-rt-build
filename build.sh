@@ -242,8 +242,9 @@ pushd libzvbi
 popd
 
 pushd libklvanc
+	patch -p1 <../0001-libklvanc-remove-curses-dep.patch
 	./autogen.sh --build
-	./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local
+	./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local --enable-dep-curses=no
 	make && make install
 	make install
 popd
