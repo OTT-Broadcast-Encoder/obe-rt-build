@@ -235,6 +235,7 @@ if [ $BUILD_X265 -eq 1 ]; then
 fi
 
 pushd libzvbi
+	patch -p1 <../0000-libzvbi-remove-png-dep.patch
 	./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local
 	make && make install
 	make install
