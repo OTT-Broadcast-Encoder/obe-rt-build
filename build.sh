@@ -163,6 +163,7 @@ if [ ! -d libzvbi ]; then
 	if [ "$LIBZVBI_TAG" != "" ]; then
 		cd libzvbi && git checkout $LIBZVBI_TAG && cd ..
 	fi
+	patch -p1 <../0000-libzvbi-remove-png-dep.patch
 fi
 
 if [ ! -d libklvanc ]; then
@@ -170,6 +171,7 @@ if [ ! -d libklvanc ]; then
 	if [ "$LIBKLVANC_TAG" != "" ]; then
 		cd libklvanc && git checkout $LIBKLVANC_TAG && cd ..
 	fi
+	patch -p1 <../0001-libklvanc-remove-curses-dep.patch
 fi
 
 if [ ! -d libklscte35 ]; then
@@ -235,14 +237,12 @@ if [ $BUILD_X265 -eq 1 ]; then
 fi
 
 pushd libzvbi
-	patch -p1 <../0000-libzvbi-remove-png-dep.patch
 	./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local
 	make && make install
 	make install
 popd
 
 pushd libklvanc
-	patch -p1 <../0001-libklvanc-remove-curses-dep.patch
 	./autogen.sh --build
 	./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local --enable-dep-curses=no
 	make && make install
