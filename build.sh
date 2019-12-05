@@ -8,6 +8,7 @@ BUILD_X265=0
 BUILD_LIBWEBSOCKETS=0
 LIBWEBSOCKETS_TAG=master
 #BUILD_JSONC=1
+BUILD_LIBAV=1
 
 # https://github.com/json-c/json-c.git
 # cd json-c
@@ -196,8 +197,14 @@ if [ ! -d fdk-aac ]; then
 	git clone https://github.com/LTNGlobal-opensource/fdk-aac.git
 fi
 
-if [ ! -d libav-obe ]; then
-	git clone https://github.com/LTNGlobal-opensource/libav-obe.git
+if [ $BUILD_LIBAV -eq 1 ]; then
+	if [ ! -d libav-obe ]; then
+		git clone https://github.com/LTNGlobal-opensource/libav-obe.git
+	fi
+else
+	if [ ! -d ffmpeg ]; then
+		git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg
+	fi
 fi
 
 if [ ! -d libmpegts-obe ]; then
@@ -280,13 +287,24 @@ pushd fdk-aac
 	make && make install
 popd
 
-pushd libav-obe
+if [ $BUILD_LIBAV -eq 1 ]; then
+	pushd libav-obe
 	./configure --prefix=$PWD/../target-root/usr/local --enable-libfdk-aac --enable-gpl --enable-nonfree \
 		--disable-swscale-alpha --disable-avdevice \
 		--extra-ldflags="-L$PWD/../target-root/usr/local/lib" \
 		--extra-cflags="-I$PWD/../target-root/usr/local/include -ldl"
 	make -j$JOBS && make install
-popd
+	popd
+else
+	pushd ffmpeg
+	./configure --prefix=$PWD/../target-root/usr/local --enable-gpl --enable-nonfree --enable-libfdk-aac \
+		--disable-swscale-alpha --disable-avdevice \
+		--enable-avresample \
+		--extra-ldflags="-L$PWD/../target-root/usr/local/lib" \
+		--extra-cflags="-I$PWD/../target-root/usr/local/include -ldl"
+	make -j$JOBS && make install
+	popd
+fi
 
 pushd libyuv
 	# Make sure we use a known-good version
