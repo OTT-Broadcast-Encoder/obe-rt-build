@@ -161,17 +161,21 @@ fi
 if [ ! -d libzvbi ]; then
 	git clone https://github.com/LTNGlobal-opensource/libzvbi.git
 	if [ "$LIBZVBI_TAG" != "" ]; then
-		cd libzvbi && git checkout $LIBZVBI_TAG && cd ..
+		cd libzvbi
+		git checkout $LIBZVBI_TAG
+		patch -p1 <../0000-libzvbi-remove-png-dep.patch
+		cd ..
 	fi
-	patch -p1 <../0000-libzvbi-remove-png-dep.patch
 fi
 
 if [ ! -d libklvanc ]; then
 	git clone https://github.com/LTNGlobal-opensource/libklvanc.git
 	if [ "$LIBKLVANC_TAG" != "" ]; then
-		cd libklvanc && git checkout $LIBKLVANC_TAG && cd ..
+		cd libklvanc
+		git checkout $LIBKLVANC_TAG
+		patch -p1 <../0001-libklvanc-remove-curses-dep.patch
+		cd ..
 	fi
-	patch -p1 <../0001-libklvanc-remove-curses-dep.patch
 fi
 
 if [ ! -d libklscte35 ]; then
