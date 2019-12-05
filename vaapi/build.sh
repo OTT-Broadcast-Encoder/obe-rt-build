@@ -98,15 +98,19 @@ pushd intel-vaapi-driver
 	fi
 popd
 
-pushd intel-gpu-tools
-	if [ ! -f .skip ]; then
-		export CFLAGS="-I$PREFIX/include"
-		export CXXFLAGS=$CFLAGS
-		./autogen.sh
-		./configure --prefix=$PREFIX
-		make
-		make install
-		touch .skip
-	fi
-popd
+# GCC 4.8 bug, missing stdatomic header
+GCCVERSION=`gcc --version | head -1`
+if [ "$GCCVERSION" != "gcc (GCC) 4.8.5 20150623 (Red Hat 4.8.5-36)" ]; then
+	pushd intel-gpu-tools
+		if [ ! -f .skip ]; then
+			export CFLAGS="-I$PREFIX/include"
+			export CXXFLAGS=$CFLAGS
+			./autogen.sh
+			./configure --prefix=$PREFIX
+			make
+			make install
+			touch .skip
+		fi
+	popd
+fi
 
