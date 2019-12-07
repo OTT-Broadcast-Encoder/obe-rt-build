@@ -378,13 +378,22 @@ if [ $BUILD_LIBAV -eq 1 ]; then
 else
 	pushd ffmpeg
 	if [ ! -f .skip ]; then
-		export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_10_8_5/include"
-		export LDFLAGS="-L$PWD/../target-root/usr/local/lib"
+		export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_10_11_2/include"
+		export LDFLAGS="-L$PWD/../target-root/usr/local/lib -lpthread -ldl"
 		export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
-		./configure --prefix=$PWD/../target-root/usr/local --enable-gpl --enable-nonfree --enable-libfdk-aac \
+		./configure --prefix=$PWD/../target-root/usr/local \
+			--enable-libfreetype \
+			--enable-gpl \
+			--enable-nonfree \
+			--enable-decklink \
+			--enable-libfdk-aac \
 			--disable-swscale-alpha \
-			--extra-ldflags="-L$PWD/../target-root/usr/local/lib" \
-			--extra-cflags="-I$PWD/../target-root/usr/local/include -ldl"
+			--enable-libfdk-aac \
+			--enable-libx264 \
+			--pkg-config-flags="--static" \
+			--enable-libx265 \
+			--enable-gpl \
+			--enable-nonfree
 		make -j$JOBS && make install
 		unset CFLAGS
 		unset LDFLAGS
