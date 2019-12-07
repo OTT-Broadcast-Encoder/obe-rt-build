@@ -6,19 +6,13 @@ FFMPEG_TAG=n4.2.1
 LIBYUV_TAG=cbe5385055b9360cacd14877450631b87eea1fcd
 LIBZVBI_TAG=e62d905e00cdd1d6d4333ead90fb5b44bfb49371
 X265_TAG=95d81a19c92f0b37b292ff2f7e5192806546f1dd
+JSONC_TAG=6c55f65d07a972dbd2d1668aab2e0056ccdd52fc
 BUILD_X265=0
 BUILD_LIBWEBSOCKETS=0
-LIBWEBSOCKETS_TAG=master
-#BUILD_JSONC=1
+LIBWEBSOCKETS_TAG=v3.2.0
+BUILD_JSONC=0
 BUILD_LIBAV=1
 BUILD_VAAPI=0
-
-# https://github.com/json-c/json-c.git
-# cd json-c
-# ./autogen.sh
-# ./configure --prefix=$PWD/../target-root/usr/local --enable-shared=no
-# make
-# make install
 
 # https://github.com/libjpeg-turbo/libjpeg-turbo.git
 # cd libjpeg-turbo
@@ -55,6 +49,8 @@ elif [ "$1" == "--installdeps" ]; then
 	sudo yum -y install pulseaudio-libs-devel
 	sudo yum -y install libpciaccess-devel
 	#sudo perl -MCPAN -e 'install Digest::Perl::MD5'
+	# 3.0.0
+	sudo yum -y install openssl-devel
 	exit 0
 elif [ "$1" == "experimental" ]; then
 	OBE_TAG=experimental
@@ -109,6 +105,8 @@ elif [ "$1" == "vid.obe.3.0" ]; then
 	BUILD_X265=1
 	BUILD_LIBAV=0
 	BUILD_VAAPI=1
+	BUILD_LIBWEBSOCKETS=1
+	BUILD_JSONC=1
 elif [ "$1" == "vid.obe.1.1.12" ]; then
 	OBE_TAG=vid.obe.1.1.12
 	LIBKLVANC_TAG=vid.obe.1.1.5
@@ -156,6 +154,13 @@ fi
 BMSDK_10_11_2=$PWD/bmsdk/10.11.2/$PLAT
 BMSDK_10_8_5=$PWD/bmsdk/10.8.5/$PLAT
 BMSDK_10_1_1=$PWD/bmsdk/10.1.1/$PLAT
+
+if [ $BUILD_JSONC -eq 1 ]; then
+	if [ ! -d json-c ]; then
+		git clone https://github.com/json-c/json-c.git
+		cd json-c && git checkout $JSONC_TAG && cd ..
+	fi
+fi
 
 if [ $BUILD_LIBWEBSOCKETS -eq 1 ]; then
 	if [ ! -d libwebsockets ]; then
@@ -252,99 +257,148 @@ if [ $BUILD_VAAPI -eq 1 ]; then
 	popd
 fi
 
+if [ $BUILD_JSONC -eq 1 ]; then
+	pushd json-c
+		if [ ! -f .skip ]; then
+			./autogen.sh
+			./configure --prefix=$PWD/../target-root/usr/local --enable-shared=no
+			make -j$JOBS
+			make install
+			touch .skip
+		fi
+	popd
+fi
+
 if [ $BUILD_LIBWEBSOCKETS -eq 1 ]; then
 	pushd libwebsockets
-		mkdir build
-		cd build
-		cmake -DCMAKE_INSTALL_PREFIX:PATH=$PWD/../../target-root/usr/local ..
-		make -j$JOBS
-		make install
+		if [ ! -f .skip ]; then
+			mkdir -p build
+			cd build
+			cmake -DCMAKE_INSTALL_PREFIX:PATH=$PWD/../../target-root/usr/local ..
+			make -j$JOBS
+			make install
+			cd ..
+			touch .skip
+		fi
 	popd
 fi
 
 if [ $BUILD_X265 -eq 1 ]; then
 	pushd x265/build/linux
-		#./make-Makefiles.bash
-		cmake -DCMAKE_INSTALL_PREFIX=$PWD/../../../target-root/usr/local -G "Unix Makefiles" ../../source
-		make -j8
-		make install
+		if [ ! -f .skip ]; then
+			#./make-Makefiles.bash
+			cmake -DCMAKE_INSTALL_PREFIX=$PWD/../../../target-root/usr/local -G "Unix Makefiles" ../../source
+			make -j8
+			make install
+			touch .skip
+		fi
 	popd
 	# Remove these, we want a static link. TODO: X265 cfg build opt?
 	rm -f target-root/usr/local/lib/libx265.so*
 fi
 
 pushd libzvbi
-	./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local
-	make && make install
-	make install
+	if [ ! -f .skip ]; then
+		./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local
+		make && make install
+		make install
+		touch .skip
+	fi
 popd
 
 pushd libklvanc
-	./autogen.sh --build
-	./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local --enable-dep-curses=no
-	make && make install
-	make install
+	if [ ! -f .skip ]; then
+		./autogen.sh --build
+		./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local --enable-dep-curses=no
+		make && make install
+		make install
+		touch .skip
+	fi
 popd
 
 pushd libklscte35
-	./autogen.sh --build
-	export CFLAGS="-I$PWD/../target-root/usr/local/include"
-	export LDFLAGS="-L$PWD/../target-root/usr/local/lib"
-	./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local
-	make && make install
+	if [ ! -f .skip ]; then
+		./autogen.sh --build
+		export CFLAGS="-I$PWD/../target-root/usr/local/include"
+		export LDFLAGS="-L$PWD/../target-root/usr/local/lib"
+		./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local
+		make && make install
+		touch .skip
+	fi
 popd
 
 pushd libmpegts-obe
-	./configure --prefix=$PWD/../target-root/usr/local
-	make && make install
-	make install
+	if [ ! -f .skip ]; then
+		./configure --prefix=$PWD/../target-root/usr/local
+		make && make install
+		make install
+		touch .skip
+	fi
 popd
 
 pushd twolame-0.3.13
-	./configure --prefix=$PWD/../target-root/usr/local --enable-shared=no
-	make && make install
+	if [ ! -f .skip ]; then
+		./configure --prefix=$PWD/../target-root/usr/local --enable-shared=no
+		make && make install
+		touch .skip
+	fi
 popd
 
 pushd x264-obe
-	make clean
-	./configure --enable-static --disable-cli --prefix=$PWD/../target-root/usr/local --disable-lavf --disable-swscale --disable-opencl
-	make -j$JOBS && make install
+	if [ ! -f .skip ]; then
+		make clean
+		./configure --enable-static --disable-cli --prefix=$PWD/../target-root/usr/local --disable-lavf --disable-swscale --disable-opencl
+		make -j$JOBS && make install
+		touch .skip
+	fi
 popd
 
 pushd fdk-aac
-	./autogen.sh
-	./configure --prefix=$PWD/../target-root/usr/local --enable-shared=no
-	make && make install
+	if [ ! -f .skip ]; then
+		./autogen.sh
+		./configure --prefix=$PWD/../target-root/usr/local --enable-shared=no
+		make && make install
+		touch .skip
+	fi
 popd
 
 if [ $BUILD_LIBAV -eq 1 ]; then
 	pushd libav-obe
-	./configure --prefix=$PWD/../target-root/usr/local --enable-libfdk-aac --enable-gpl --enable-nonfree \
-		--disable-swscale-alpha --disable-avdevice \
-		--extra-ldflags="-L$PWD/../target-root/usr/local/lib" \
-		--extra-cflags="-I$PWD/../target-root/usr/local/include -ldl"
-	make -j$JOBS && make install
+		if [ ! -f .skip ]; then
+			./configure --prefix=$PWD/../target-root/usr/local --enable-libfdk-aac --enable-gpl --enable-nonfree \
+				--disable-swscale-alpha --disable-avdevice \
+				--extra-ldflags="-L$PWD/../target-root/usr/local/lib" \
+				--extra-cflags="-I$PWD/../target-root/usr/local/include -ldl"
+			make -j$JOBS && make install
+			touch .skip
+		fi
 	popd
 else
 	pushd ffmpeg
-	export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_10_8_5/include"
-	export LDFLAGS="-L$PWD/../target-root/usr/local/lib"
-	export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
-	./configure --prefix=$PWD/../target-root/usr/local --enable-gpl --enable-nonfree --enable-libfdk-aac \
-		--disable-swscale-alpha \
-		--extra-ldflags="-L$PWD/../target-root/usr/local/lib" \
-		--extra-cflags="-I$PWD/../target-root/usr/local/include -ldl"
-	make -j$JOBS && make install
-	unset CFLAGS
-	unset LDFLAGS
-	unset PKG_CONFIG_PATH
+	if [ ! -f .skip ]; then
+		export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_10_8_5/include"
+		export LDFLAGS="-L$PWD/../target-root/usr/local/lib"
+		export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
+		./configure --prefix=$PWD/../target-root/usr/local --enable-gpl --enable-nonfree --enable-libfdk-aac \
+			--disable-swscale-alpha \
+			--extra-ldflags="-L$PWD/../target-root/usr/local/lib" \
+			--extra-cflags="-I$PWD/../target-root/usr/local/include -ldl"
+		make -j$JOBS && make install
+		unset CFLAGS
+		unset LDFLAGS
+		unset PKG_CONFIG_PATH
+		touch .skip
+	fi
 	popd
 fi
 
 pushd libyuv
-	make -f linux.mk
-	cp -r include/* $PWD/../target-root/usr/local/include
-	cp libyuv.a $PWD/../target-root/usr/local/lib
+	if [ ! -f .skip ]; then
+		make -f linux.mk
+		cp -r include/* $PWD/../target-root/usr/local/include
+		cp libyuv.a $PWD/../target-root/usr/local/lib
+		touch .skip
+	fi
 popd
 
 build_obe() {
