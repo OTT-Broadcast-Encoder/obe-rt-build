@@ -1,0 +1,13 @@
+diff --git a/source/convert_from.cc b/source/convert_from.cc
+index ab5afc0..991fd13 100644
+--- a/source/convert_from.cc
++++ b/source/convert_from.cc
+@@ -412,7 +412,7 @@ int I420ToNV12(const uint8* src_y,
+     CopyPlane(src_y, src_stride_y, dst_y, dst_stride_y, width, height);
+   }
+   MergeUVPlane(src_u, src_stride_u, src_v, src_stride_v, dst_uv, dst_stride_uv,
+-               halfwidth, halfheight);
++               halfwidth, halfheight * 2);
+   return 0;
+ }
+ 

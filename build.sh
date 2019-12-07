@@ -2,6 +2,8 @@
 
 JOBS=8
 
+FFMPEG_TAG=n4.2.1
+LIBYUV_TAG=cbe5385055b9360cacd14877450631b87eea1fcd
 LIBZVBI_TAG=e62d905e00cdd1d6d4333ead90fb5b44bfb49371
 X265_TAG=95d81a19c92f0b37b292ff2f7e5192806546f1dd
 BUILD_X265=0
@@ -9,6 +11,7 @@ BUILD_LIBWEBSOCKETS=0
 LIBWEBSOCKETS_TAG=master
 #BUILD_JSONC=1
 BUILD_LIBAV=1
+BUILD_VAAPI=0
 
 # https://github.com/json-c/json-c.git
 # cd json-c
@@ -98,6 +101,14 @@ elif [ "$1" == "vid.obe.2.0" ]; then
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
 	LIBMPEGTS_TAG=hevc-dev
 	BUILD_X265=1
+elif [ "$1" == "vid.obe.3.0" ]; then
+	OBE_TAG=3.0.0
+	LIBKLVANC_TAG=vid.obe.1.2.1
+	LIBKLSCTE35_TAG=vid.obe.1.2.0
+	LIBMPEGTS_TAG=hevc-dev
+	BUILD_X265=1
+	BUILD_LIBAV=0
+	BUILD_VAAPI=1
 elif [ "$1" == "vid.obe.1.1.12" ]; then
 	OBE_TAG=vid.obe.1.1.12
 	LIBKLVANC_TAG=vid.obe.1.1.5
@@ -142,6 +153,7 @@ if [ `uname -s` = "Darwin" ]; then
 else
     PLAT=Linux
 fi
+BMSDK_10_11_2=$PWD/bmsdk/10.11.2/$PLAT
 BMSDK_10_8_5=$PWD/bmsdk/10.8.5/$PLAT
 BMSDK_10_1_1=$PWD/bmsdk/10.1.1/$PLAT
 
@@ -208,6 +220,7 @@ if [ $BUILD_LIBAV -eq 1 ]; then
 else
 	if [ ! -d ffmpeg ]; then
 		git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg
+		cd ffmpeg && git checkout $FFMPEG_TAG && cd ..
 	fi
 fi
 
@@ -220,10 +233,23 @@ fi
 
 if [ ! -d libyuv ]; then
 	git clone https://github.com/LTNGlobal-opensource/libyuv.git
+	pushd libyuv
+		# Make sure we use a known-good version
+		git checkout $LIBYUV_TAG
+		patch -p1 <../0002-libyuv-csc-height.patch
+	popd
 fi
 
 if [ ! -d twolame-0.3.13 ]; then
 	tar zxf twolame-0.3.13.tar.gz
+fi
+
+if [ $BUILD_VAAPI -eq 1 ]; then
+	pushd vaapi
+		./build.sh
+		# Newer builds default to the iHD driver, use the haswell compatible driver.
+		# LIBVA_DRIVER_NAME=i965 ./vainfo
+	popd
 fi
 
 if [ $BUILD_LIBWEBSOCKETS -eq 1 ]; then
@@ -301,18 +327,21 @@ if [ $BUILD_LIBAV -eq 1 ]; then
 	popd
 else
 	pushd ffmpeg
+	export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_10_8_5/include"
+	export LDFLAGS="-L$PWD/../target-root/usr/local/lib"
+	export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
 	./configure --prefix=$PWD/../target-root/usr/local --enable-gpl --enable-nonfree --enable-libfdk-aac \
-		--disable-swscale-alpha --disable-avdevice \
-		--enable-avresample \
+		--disable-swscale-alpha \
 		--extra-ldflags="-L$PWD/../target-root/usr/local/lib" \
 		--extra-cflags="-I$PWD/../target-root/usr/local/include -ldl"
 	make -j$JOBS && make install
+	unset CFLAGS
+	unset LDFLAGS
+	unset PKG_CONFIG_PATH
 	popd
 fi
 
 pushd libyuv
-	# Make sure we use a known-good version
-	git checkout cbe5385055b9360cacd14877450631b87eea1fcd
 	make -f linux.mk
 	cp -r include/* $PWD/../target-root/usr/local/include
 	cp libyuv.a $PWD/../target-root/usr/local/lib
