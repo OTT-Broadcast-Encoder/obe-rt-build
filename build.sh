@@ -286,15 +286,17 @@ fi
 if [ $BUILD_X265 -eq 1 ]; then
 	pushd x265/build/linux
 		if [ ! -f .skip ]; then
+			# Static only build
 			#./make-Makefiles.bash
-			cmake -DCMAKE_INSTALL_PREFIX=$PWD/../../../target-root/usr/local -G "Unix Makefiles" ../../source
-			make -j8
+			cmake -DCMAKE_INSTALL_PREFIX=$PWD/../../../target-root/usr/local \
+				-G "Unix Makefiles" \
+				-DENABLE_SHARED:bool=off \
+				../../source
+			make -j$JOBS
 			make install
 			touch .skip
 		fi
 	popd
-	# Remove these, we want a static link. TODO: X265 cfg build opt?
-	rm -f target-root/usr/local/lib/libx265.so*
 fi
 
 pushd libzvbi
