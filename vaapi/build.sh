@@ -30,6 +30,9 @@ if [ ! -d libva-utils ]; then
 	pushd libva-utils/putsurface
 		patch <../../01.patch
 	popd
+	pushd libva-utils
+		patch -p1 <../02.patch
+	popd
 fi
 
 if [ ! -d intel-vaapi-driver ]; then

@@ -1,0 +1,13 @@
+diff --git a/common/loadsurface.h b/common/loadsurface.h
+index c5cb9d4..dfb1649 100755
+--- a/common/loadsurface.h
++++ b/common/loadsurface.h
+@@ -406,7 +406,7 @@ static int upload_surface_yuv(VADisplay va_dpy, VASurfaceID surface_id,
+  * if dst_fourcc == NV12, assume the buffer pointed by dst_U
+  * is UV interleaved (src_V is ignored)
+  */
+-static int download_surface_yuv(VADisplay va_dpy, VASurfaceID surface_id,
++int download_surface_yuv(VADisplay va_dpy, VASurfaceID surface_id,
+                                 int dst_fourcc, int dst_width, int dst_height,
+                                 unsigned char *dst_Y, unsigned char *dst_U, unsigned char *dst_V)
+ {
