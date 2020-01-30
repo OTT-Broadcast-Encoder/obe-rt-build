@@ -97,9 +97,15 @@ elif [ "$1" == "vid.obe.2.0.16" ]; then
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
 	LIBMPEGTS_TAG=hevc-dev
 	BUILD_X265=1
+elif [ "$1" == "vid.obe.2.0.22" ]; then
+	OBE_TAG=vid.obe.2.0.22
+	LIBKLVANC_TAG=vid.obe.1.2.2
+	LIBKLSCTE35_TAG=vid.obe.1.2.0
+	LIBMPEGTS_TAG=hevc-dev
+	BUILD_X265=1
 elif [ "$1" == "vid.obe.2.0" ]; then
 	OBE_TAG=2.0.0
-	LIBKLVANC_TAG=vid.obe.1.2.1
+	LIBKLVANC_TAG=vid.obe.1.2.2
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
 	LIBMPEGTS_TAG=hevc-dev
 	BUILD_X265=1
@@ -195,10 +201,7 @@ fi
 if [ ! -d libklvanc ]; then
 	git clone https://github.com/LTNGlobal-opensource/libklvanc.git
 	if [ "$LIBKLVANC_TAG" != "" ]; then
-		cd libklvanc
-		git checkout $LIBKLVANC_TAG
-		patch -p1 <../0001-libklvanc-remove-curses-dep.patch
-		cd ..
+		cd libklvanc && git checkout $LIBKLVANC_TAG && cd ..
 	fi
 fi
 
@@ -454,5 +457,5 @@ build_obe() {
     fi
 }
 
-#build_obe $OBE_TAG $BMSDK_10_1_1
+build_obe $OBE_TAG $BMSDK_10_1_1
 build_obe $OBE_TAG $BMSDK_10_8_5
