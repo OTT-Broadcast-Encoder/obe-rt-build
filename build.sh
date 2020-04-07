@@ -119,8 +119,8 @@ elif [ "$1" == "vid.obe.3.0.0" ]; then
 	BUILD_VAAPI=0
 	BUILD_LIBWEBSOCKETS=0
 	BUILD_JSONC=0
-elif [ "$1" == "vid.obe.3.0.1" ]; then
-	OBE_TAG=vid.obe.3.0.1
+elif [ "$1" == "vid.obe.3.0.3" ]; then
+	OBE_TAG=vid.obe.3.0.3
 	LIBKLVANC_TAG=vid.obe.1.2.2
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
 	LIBMPEGTS_TAG=hevc-dev
