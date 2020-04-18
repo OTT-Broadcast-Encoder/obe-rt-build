@@ -21,3 +21,4 @@ rm -rf  libzvbi
 rm -rf  x265
 rm -rf  libwebsockets
 rm -rf  json-c
+rm -rf  libltntstools

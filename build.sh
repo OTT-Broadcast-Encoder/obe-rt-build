@@ -5,7 +5,8 @@ JOBS=8
 FFMPEG_TAG=n4.2.1
 LIBYUV_TAG=cbe5385055b9360cacd14877450631b87eea1fcd
 LIBZVBI_TAG=e62d905e00cdd1d6d4333ead90fb5b44bfb49371
-X265_TAG=95d81a19c92f0b37b292ff2f7e5192806546f1dd
+X265_TAG=Release_3.3
+X265_TAG=master
 JSONC_TAG=6c55f65d07a972dbd2d1668aab2e0056ccdd52fc
 BUILD_X265=0
 BUILD_LIBWEBSOCKETS=0
@@ -13,6 +14,7 @@ LIBWEBSOCKETS_TAG=v3.2.0
 BUILD_JSONC=0
 BUILD_LIBAV=1
 BUILD_VAAPI=0
+BUILD_LIBLTNTSTOOLS=0
 
 # https://github.com/libjpeg-turbo/libjpeg-turbo.git
 # cd libjpeg-turbo
@@ -139,6 +141,7 @@ elif [ "$1" == "vid.obe.3.0-dev" ]; then
 	BUILD_VAAPI=0
 	BUILD_LIBWEBSOCKETS=0
 	BUILD_JSONC=0
+	BUILD_LIBLTNTSTOOLS=1
 elif [ "$1" == "vid.obe.1.1.12" ]; then
 	OBE_TAG=vid.obe.1.1.12
 	LIBKLVANC_TAG=vid.obe.1.1.5
@@ -186,6 +189,12 @@ fi
 BMSDK_10_11_2=$PWD/bmsdk/10.11.2/$PLAT
 BMSDK_10_8_5=$PWD/bmsdk/10.8.5/$PLAT
 BMSDK_10_1_1=$PWD/bmsdk/10.1.1/$PLAT
+
+if [ $BUILD_LIBLTNTSTOOLS -eq 1 ]; then
+	if [ ! -d libltntstools ]; then
+		git clone https://github.com/LTNGlobal-opensource/libltntstools
+	fi
+fi
 
 if [ $BUILD_JSONC -eq 1 ]; then
 	if [ ! -d json-c ]; then
@@ -278,6 +287,18 @@ if [ ! -d twolame-0.3.13 ]; then
 	tar zxf twolame-0.3.13.tar.gz
 fi
 
+if [ $BUILD_LIBLTNTSTOOLS -eq 1 ]; then
+	pushd libltntstools
+		if [ ! -f .skip ]; then
+			./autogen.sh --build
+			./configure --prefix=$PWD/../target-root/usr/local --enable-shared=no
+			make -j$JOBS
+			make install
+			touch .skip
+		fi
+	popd
+fi
+
 if [ $BUILD_VAAPI -eq 1 ]; then
 	pushd vaapi
 		./build.sh
@@ -323,7 +344,7 @@ if [ $BUILD_X265 -eq 1 ]; then
 				../../source
 			make -j$JOBS
 			make install
-			touch .skip
+			#touch .skip
 		fi
 	popd
 fi
@@ -477,5 +498,5 @@ build_obe() {
     fi
 }
 
-build_obe $OBE_TAG $BMSDK_10_1_1
+#build_obe $OBE_TAG $BMSDK_10_1_1
 build_obe $OBE_TAG $BMSDK_10_8_5
