@@ -6,7 +6,7 @@ FFMPEG_TAG=n4.2.1
 LIBYUV_TAG=cbe5385055b9360cacd14877450631b87eea1fcd
 LIBZVBI_TAG=e62d905e00cdd1d6d4333ead90fb5b44bfb49371
 X265_TAG=Release_3.3
-X265_TAG=master
+X265_TAG=ef1c5205fc14d436b71b1459eba0c85fec0013b7
 JSONC_TAG=6c55f65d07a972dbd2d1668aab2e0056ccdd52fc
 BUILD_X265=0
 BUILD_LIBWEBSOCKETS=0
@@ -131,6 +131,17 @@ elif [ "$1" == "vid.obe.3.0.3" ]; then
 	BUILD_VAAPI=0
 	BUILD_LIBWEBSOCKETS=0
 	BUILD_JSONC=0
+elif [ "$1" == "vid.obe.3.1.0" ]; then
+	OBE_TAG=vid.obe.3.1.0
+	LIBKLVANC_TAG=vid.obe.1.2.2
+	LIBKLSCTE35_TAG=vid.obe.1.2.0
+	LIBMPEGTS_TAG=hevc-dev
+	BUILD_X265=1
+	BUILD_LIBAV=0
+	BUILD_VAAPI=0
+	BUILD_LIBWEBSOCKETS=0
+	BUILD_JSONC=0
+	BUILD_LIBLTNTSTOOLS=1
 elif [ "$1" == "vid.obe.3.0-dev" ]; then
 	OBE_TAG=3.0.0
 	LIBKLVANC_TAG=vid.obe.1.2.2
@@ -213,7 +224,10 @@ fi
 if [ $BUILD_X265 -eq 1 ]; then
 	if [ ! -d x265 ]; then
 		git clone https://github.com/videolan/x265.git
-		cd x265 && git checkout $X265_TAG && cd ..
+		cd x265
+		git checkout $X265_TAG
+		patch -p1 <../0003-x265-sei-overflow.patch
+		cd ..
 	fi
 fi
 
