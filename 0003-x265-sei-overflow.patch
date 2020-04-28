@@ -1,0 +1,13 @@
+diff --git a/source/encoder/encoder.cpp b/source/encoder/encoder.cpp
+index 4513f4f..80e205f 100644
+--- a/source/encoder/encoder.cpp
++++ b/source/encoder/encoder.cpp
+@@ -1106,6 +1106,8 @@ void Encoder::copyUserSEIMessages(Frame *frame, const x265_picture* pic_in)
+ 
+             if (!frame->m_userSEI.payloads[i].payload)
+                 frame->m_userSEI.payloads[i].payload = new uint8_t[input.payloadSize];
++            else if (frame->m_userSEI.payloads[i].payloadSize < input.payloadSize)
++                frame->m_userSEI.payloads[i].payload = (uint8_t *)realloc(frame->m_userSEI.payloads[i].payload, input.payloadSize);
+             memcpy(frame->m_userSEI.payloads[i].payload, input.payload, input.payloadSize);
+             frame->m_userSEI.payloads[i].payloadSize = input.payloadSize;
+             frame->m_userSEI.payloads[i].payloadType = input.payloadType;
