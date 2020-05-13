@@ -227,6 +227,7 @@ if [ $BUILD_X265 -eq 1 ]; then
 		cd x265
 		git checkout $X265_TAG
 		patch -p1 <../0003-x265-sei-overflow.patch
+		patch -p1 <../0004-x265-sei-additional-elements-segfault.patch
 		cd ..
 	fi
 fi
