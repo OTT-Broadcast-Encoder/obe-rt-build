@@ -1,0 +1,15 @@
+diff --git a/source/encoder/frameencoder.cpp b/source/encoder/frameencoder.cpp
+index e09a84e..6934cf3 100644
+--- a/source/encoder/frameencoder.cpp
++++ b/source/encoder/frameencoder.cpp
+@@ -686,7 +686,9 @@ void FrameEncoder::compressFrame()
+             m_top->m_lastBPSEI = m_rce.encodeOrder;
+         }
+ 
+-        if (m_frame->m_lowres.sliceType == X265_TYPE_IDR && m_param->bEmitIDRRecoverySEI)
++        /* LTN: Add condition to issue recovery points when bIntraRefresh as VLC will never decoder without a recovery point. */
++        if ((m_frame->m_lowres.sliceType == X265_TYPE_IDR && m_param->bEmitIDRRecoverySEI) ||
++            (m_param->bIntraRefresh && m_param->bEmitIDRRecoverySEI))
+         {
+             /* Recovery Point SEI require the SPS to be "activated" */
+             SEIRecoveryPoint sei;
