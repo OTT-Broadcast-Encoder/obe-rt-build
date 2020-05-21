@@ -153,6 +153,17 @@ elif [ "$1" == "vid.obe.3.2.6" ]; then
 	BUILD_LIBWEBSOCKETS=0
 	BUILD_JSONC=0
 	BUILD_LIBLTNTSTOOLS=1
+elif [ "$1" == "vid.obe.3.2.7" ]; then
+	OBE_TAG=vid.obe.3.2.7
+	LIBKLVANC_TAG=vid.obe.1.2.2
+	LIBKLSCTE35_TAG=vid.obe.1.2.0
+	LIBMPEGTS_TAG=hevc-dev
+	BUILD_X265=1
+	BUILD_LIBAV=0
+	BUILD_VAAPI=0
+	BUILD_LIBWEBSOCKETS=0
+	BUILD_JSONC=0
+	BUILD_LIBLTNTSTOOLS=1
 elif [ "$1" == "vid.obe.3.0-dev" ]; then
 	OBE_TAG=3.0.0
 	LIBKLVANC_TAG=vid.obe.1.2.2
