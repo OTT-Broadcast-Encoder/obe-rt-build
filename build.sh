@@ -14,6 +14,7 @@ LIBWEBSOCKETS_TAG=v3.2.0
 BUILD_JSONC=0
 BUILD_LIBAV=1
 BUILD_VAAPI=0
+BUILD_NVENC=0
 BUILD_LIBLTNTSTOOLS=0
 
 # https://github.com/libjpeg-turbo/libjpeg-turbo.git
@@ -344,6 +345,19 @@ if [ $BUILD_VAAPI -eq 1 ]; then
 		# Newer builds default to the iHD driver, use the haswell compatible driver.
 		# LIBVA_DRIVER_NAME=i965 ./vainfo
 	popd
+fi
+
+if [ $BUILD_NVENC -eq 1 ]; then
+	# References:
+	# https://linuxconfig.org/how-to-install-nvidia-cuda-toolkit-on-centos-7-linux
+	# https://arstech.net/compile-ffmpeg-with-nvenc-h264/
+	# TODO
+	# Blacklist the nouveau driver
+	# Install the proprietary NVidia driver
+	# $ wget https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-repo-rhel7-10.0.130-1.x86_64.rpm
+	# $ sudo rpm -i cuda-repo-rhel7-10.0.130-1.x86_64.rpm
+	# Install cuda and A LOT of deps
+	# $ sudo yum -i install cuda
 fi
 
 if [ $BUILD_JSONC -eq 1 ]; then
