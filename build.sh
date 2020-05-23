@@ -483,7 +483,7 @@ else
 	if [ ! -f .skip ]; then
 		export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_10_11_2/include"
 		export LDFLAGS="-L$PWD/../target-root/usr/local/lib -lpthread -ldl"
-		export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
+		export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig:/usr/local/lib/pkgconfig
 		./configure --prefix=$PWD/../target-root/usr/local \
 			--enable-libfreetype \
 			--enable-gpl \
@@ -497,6 +497,12 @@ else
 			--enable-libx265 \
 			--enable-gpl \
 			--enable-nonfree
+
+# For NVENC and Cuda
+#			--enable-cuda-nvcc --enable-cuvid --enable-nvenc \
+#			--extra-cflags="-I/usr/local/cuda/include/" \
+#			--extra-ldflags=-L/usr/local/cuda/lib64/
+
 		make -j$JOBS && make install
 		unset CFLAGS
 		unset LDFLAGS
