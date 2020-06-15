@@ -358,6 +358,7 @@ if [ $BUILD_NVENC -eq 1 ]; then
 	# $ sudo rpm -i cuda-repo-rhel7-10.0.130-1.x86_64.rpm
 	# Install cuda and A LOT of deps
 	# $ sudo yum -i install cuda
+	:
 fi
 
 if [ $BUILD_JSONC -eq 1 ]; then
