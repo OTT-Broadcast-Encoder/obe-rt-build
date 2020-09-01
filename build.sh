@@ -92,7 +92,7 @@ elif [ "$1" == "vid.obe.2.0.15" ]; then
 	OBE_TAG=vid.obe.2.0.15
 	LIBKLVANC_TAG=vid.obe.1.2.1
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=5442a8600d6d1eeb44e3bafe2b9992c531cd39b2
 	BUILD_X265=1
 elif [ "$1" == "vid.obe.2.0.16" ]; then
 	OBE_TAG=vid.obe.2.0.16
