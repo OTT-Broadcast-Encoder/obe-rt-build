@@ -1,0 +1,52 @@
+
+v3.3.0
+    Key feature changes:
+    * A52 changes to allow bitstream selection from any SDI pair.
+    * Support for UDP packets with less than 7 TS packets.
+      This must be configured before issuing the encoder start command.
+      Only tested with 1128 and 1316, the syntax is:
+      set variable udp_output.transport_payload_size = 1128
+
+    Developer changes:
+    * GPU related changes for NVIDIA GPUs vs Intel GPUS. (No official GPU support)
+    * 4K p25/p50/p59.94/p60 related improvements, better profiling in the video filter (in developer builds only).
+    * When runtime thermal stats are enabled, check in multiple /sys/devices locations for thermal sensor metrics.
+    * Changes for measuring BPS with higher levels precision for network output (debug logging)
+    * Non-default debug messages add in developer builds.
+    * Bit-rot Improvements when encoding from USB webcams (in developer builds only).
+
+v3.2.8
+    * VANC SCTE104 Disney BrandNet 52/01 messages being lost due to malformed CRCs
+
+v3.2.7
+    * SCTE35/104 detection/conversion not working for SD channels.
+
+v3.2.6
+    * Revert hevc: Enable SEI recovery points in nal output
+
+v3.2.5
+    * ac3/aac/mp2: sdi-audio-pair bug, resulting in the wrong SDI audio channel being encoded.
+    * obe: when displaying codec stream configurations on startup, display the sdi audio pair being used.
+
+v3.2.4
+    * hevc: Enable AUD in output nals* hevc: Enable SEI recovery points in nal output
+
+v3.2.3
+    * hevc: set qpstep to 12 (from def 4) to allow the encoder to step by more than 4 qp units
+            in the event of wild bitrate swings
+    * hevc: interlaced. Reduce the CTU to improve the CPU encoding time. The alternative was
+            allowing the video q get behind and force the QP to 40
+    * hevc: interlaced, increase eminimum QP to give better performance CPU performance on still images
+
+v3.2.2
+    * hevc: Don't reduce the QP if the video queue gets behind
+
+v3.2.1
+    * hevc: two new options to consider in the future, added but commented out.
+    * core: added skeleton funcs to eventually centralize a handful of process statistics
+    * core: add a func to detect what kind of cpu the s/w is running on.
+    * core: add a func to return the video encoder frame queue depth
+    * muxer: don't warn more than once per second if the multiplex has no padding
+    * video sei timestamping: various improves after hard including the source into ffmpeg for test purposes
+    * video sei timestamping: rename core funcs across the entire project
+
