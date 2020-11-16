@@ -32,12 +32,30 @@ if [ "$1" == "" ]; then
 	echo "No specific tag specified.  Using master"
 	OBE_TAG=master
 elif [ "$1" == "--installdeps" ]; then
+
+	if [ -f /.dockerenv ]; then
+		# Docker centos7.8 needs this
+		sudo yum -y install wget xz-devel
+	fi
+
 	# We need epel for YASM
 	sudo yum -y install epel-release
 	sudo yum -y install yum-utils
-	sudo yum-config-manager --add-repo http://www.nasm.us/nasm.repo
-	sudo yum -y install nasm
-	sudo yum repolist
+
+	# We can't use nasm 2.15 with centos 7.8 because the rpmlibs
+	# are incompat. We have to build with nasm 2.14
+	#sudo yum-config-manager --add-repo http://www.nasm.us/nasm.repo
+	#sudo yum -y install nasm
+	#sudo yum repolist
+
+	RHAT_VERSION=`cat /etc/redhat-release`
+	if [ "$RHAT_VERSION" == "CentOS Linux release 7.8.2003 (Core)" ]; then
+		if [ ! -f nasm-2.14-0.fc27.x86_64.rpm ]; then
+			wget https://www.nasm.us/pub/nasm/releasebuilds/2.14/linux/nasm-2.14-0.fc27.x86_64.rpm
+		fi
+		sudo rpm -i nasm-2.14-0.fc27.x86_64.rpm
+	fi
+
 	sudo yum -y install libtool
 	sudo yum -y install libpng
 	sudo yum -y install yasm
