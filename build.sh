@@ -501,7 +501,6 @@ else
 		export LDFLAGS="-L$PWD/../target-root/usr/local/lib -lpthread -ldl"
 		export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig:/usr/local/lib/pkgconfig
 		./configure --prefix=$PWD/../target-root/usr/local \
-			--enable-libfreetype \
 			--enable-gpl \
 			--enable-nonfree \
 			--enable-decklink \
