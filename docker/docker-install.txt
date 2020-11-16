@@ -1,0 +1,23 @@
+Centos7 - LTN LEAF - SOUP TO NUTS "HELLO WORLD"
+
+Logged in as a traditional development user (stoth)
+
+sudo yum -y install docker
+sudo systemctl start docker
+sudo systemctl enable docker
+
+$ sudo docker ps
+<error>
+
+sudo usermod -aG dockerroot $(whoami)
+
+sudo vi /etc/docker/daemon.json
+{
+    "live-restore": true,
+    "group": "dockerroot"
+}^^^ This runs docker as the dockerroot group
+
+sudo systemctl restart docker
+
+init 6, reboot, check docker starts up on boot.
+

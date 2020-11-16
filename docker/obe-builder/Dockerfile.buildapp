@@ -1,0 +1,3 @@
+FROM stoth/ltn-docker-obe-builder:latest
+WORKDIR /app
+CMD ["bash","-c","git clone https://github.com/LTNGlobal-opensource/obe-build-environment.git && cd obe-build-environment && ./build.sh --installdeps && ./build.sh vid.obe.3.3.0"]
