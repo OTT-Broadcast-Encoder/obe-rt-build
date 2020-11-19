@@ -17,6 +17,8 @@ BUILD_VAAPI=0
 BUILD_NVENC=0
 BUILD_LIBLTNTSTOOLS=0
 LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
+BUILD_NDI=0
+NDI_SDK=/home/storage/dev/NDI/NDI-sdk-for-linux
 
 # https://github.com/libjpeg-turbo/libjpeg-turbo.git
 # cd libjpeg-turbo
@@ -578,6 +580,11 @@ build_obe() {
 	export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_DIR"
 	export LDFLAGS="-L$PWD/../target-root/usr/local/lib"
 	export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
+	if [ $BUILD_NDI -eq 1 ]; then
+		export CFLAGS="$CFLAGS -I$NDI_SDK/include"
+		export LDFLAGS="$LDFLAGS -L$NDI_SDK/lib/x86_64-linux-gnu"
+	fi
+
 	if [ -f autogen.sh ]; then
 		./autogen.sh --build
 	fi
