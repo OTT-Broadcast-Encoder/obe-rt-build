@@ -18,7 +18,7 @@ BUILD_NVENC=0
 BUILD_LIBLTNTSTOOLS=0
 LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
 BUILD_NDI=0
-NDI_SDK=/home/storage/dev/NDI/NDI-sdk-for-linux
+NDI_SDK=/storage/dev/NDI/sdk-v4
 
 # https://github.com/libjpeg-turbo/libjpeg-turbo.git
 # cd libjpeg-turbo
