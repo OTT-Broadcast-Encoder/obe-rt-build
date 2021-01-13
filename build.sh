@@ -19,6 +19,10 @@ BUILD_LIBLTNTSTOOLS=0
 LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
 BUILD_NDI=0
 NDI_SDK=/storage/dev/NDI/sdk-v4
+BUILD_DEKTEC=0
+DEKTEC_DRV=$PWD/dektecsdk/2019.11.0/Drivers/DtPcie/Source/Linux
+DEKTEC_SDK=$PWD/dektecsdk/2019.11.0/DTAPI
+DEKTEC_SDK_INC=$PWD/dektecsdk/2019.11.0/DTAPI/Include
 
 # https://github.com/libjpeg-turbo/libjpeg-turbo.git
 # cd libjpeg-turbo
@@ -282,6 +286,20 @@ if [ $BUILD_LIBWEBSOCKETS -eq 1 ]; then
 	fi
 fi
 
+if [ $BUILD_DEKTEC -eq 1 ]; then
+	mkdir -p dektecsdk
+	if [ ! -f dektecsdk/LinuxSDK_v2019.11.0.tar.gz ]; then
+		cd dektecsdk
+		wget https://www.dektec.com/products/applications/DtRecord/Downloads/DtRecord_v4.9.0.zip
+		wget https://www.dektec.com/products/SDK/DTAPI/Downloads/LinuxSDK_v2019.11.0.tar.gz
+		wget https://www.dektec.com/products/applications/DtInfoCL/downloads/DtInfoCL.zip
+		wget https://www.dektec.com/products/sdk/MatrixApi/downloads/MatrixExamples.zip
+		tar zxf LinuxSDK_v2019.11.0.tar.gz
+		mv LinuxSDK 2019.11.0
+		cd ..
+	fi
+fi
+
 if [ $BUILD_X265 -eq 1 ]; then
 	if [ ! -d x265 ]; then
 		git clone https://github.com/videolan/x265.git
@@ -363,6 +381,18 @@ fi
 if [ ! -d twolame-0.3.13 ]; then
 	tar zxf twolame-0.3.13.tar.gz
 fi
+
+if [ $BUILD_DEKTEC -eq 1 ]; then
+	pushd $DEKTEC_DRV
+		make
+		sudo insmod ./DtPcie.ko
+		if [ ! -d /dev/DtPcie0 ]; then
+			echo "Dektec module load failed, aborting."
+			exit 1
+		fi
+	popd
+fi
+
 
 if [ $BUILD_LIBLTNTSTOOLS -eq 1 ]; then
 	pushd libltntstools
@@ -585,6 +615,10 @@ build_obe() {
 	if [ $BUILD_NDI -eq 1 ]; then
 		export CFLAGS="$CFLAGS -I$NDI_SDK/include"
 		export LDFLAGS="$LDFLAGS -L$NDI_SDK/lib/x86_64-linux-gnu"
+	fi
+	if [ $BUILD_DEKTEC -eq 1 ]; then
+		export CFLAGS="$CFLAGS -I$DEKTEC_SDK_INC"
+		export CPPFLAGS=$CFLAGS
 	fi
 
 	if [ -f autogen.sh ]; then
