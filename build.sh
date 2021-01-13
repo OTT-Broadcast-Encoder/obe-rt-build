@@ -75,6 +75,8 @@ elif [ "$1" == "--installdeps" ]; then
 	#sudo perl -MCPAN -e 'install Digest::Perl::MD5'
 	# 3.0.0
 	sudo yum -y install openssl-devel
+	# Satisfy OSX objC autotools rule on linux
+	sudo yum -y install gcc-objc
 	exit 0
 elif [ "$1" == "experimental" ]; then
 	OBE_TAG=experimental
