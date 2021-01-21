@@ -219,6 +219,8 @@ elif [ "$1" == "vid.obe.3.0-dev" ]; then
 	BUILD_LIBWEBSOCKETS=0
 	BUILD_JSONC=0
 	BUILD_LIBLTNTSTOOLS=1
+	BUILD_NDI=0
+	BUILD_DEKTEC=0
 elif [ "$1" == "vid.obe.1.1.12" ]; then
 	OBE_TAG=vid.obe.1.1.12
 	LIBKLVANC_TAG=vid.obe.1.1.5
