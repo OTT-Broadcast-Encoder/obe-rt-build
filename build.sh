@@ -633,5 +633,5 @@ build_obe() {
     fi
 }
 
-build_obe $OBE_TAG $BMSDK_10_1_1
+#build_obe $OBE_TAG $BMSDK_10_1_1
 build_obe $OBE_TAG $BMSDK_10_8_5
