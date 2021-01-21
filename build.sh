@@ -19,7 +19,7 @@ BUILD_LIBLTNTSTOOLS=0
 LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
 # Absolute path to the SDK. Fixme.
 BUILD_NDI=0
-NDI_SDK=/storage/dev/NDI/sdk-v4
+NDI_SDK=$PWD/NDI/sdk
 # Absolute path to the SDK. Fixme.
 BUILD_DEKTEC=0
 DEKTEC_DRV=$PWD/dektecsdk/2019.11.0/Drivers/DtPcie/Source/Linux
@@ -288,6 +288,22 @@ if [ $BUILD_LIBWEBSOCKETS -eq 1 ]; then
 		git clone https://libwebsockets.org/repo/libwebsockets
 		cd libwebsockets && git checkout $LIBWEBSOCKETS_TAG && cd ..
 	fi
+fi
+
+if [ $BUILD_NDI -eq 1 ]; then
+	mkdir -p NDI
+	cd NDI
+	if [ ! -f InstallNDISDK_v4_Linux.tar.gz ]; then
+		wget https://downloads.ndi.tv/SDK/NDI_SDK_Linux/InstallNDISDK_v4_Linux.tar.gz
+	fi
+	if [ ! -f InstallNDISDK_v4_Linux.sh ]; then
+		tar zxf InstallNDISDK_v4_Linux.tar.gz
+	fi
+	if [ ! -d sdk ]; then
+		echo "Y" | ./InstallNDISDK_v4_Linux.sh >/dev/null
+		mv 'NDI SDK for Linux' sdk
+	fi
+	cd ..
 fi
 
 if [ $BUILD_DEKTEC -eq 1 ]; then
