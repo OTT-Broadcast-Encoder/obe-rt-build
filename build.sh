@@ -17,8 +17,10 @@ BUILD_VAAPI=0
 BUILD_NVENC=0
 BUILD_LIBLTNTSTOOLS=0
 LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
+# Absolute path to the SDK. Fixme.
 BUILD_NDI=0
 NDI_SDK=/storage/dev/NDI/sdk-v4
+# Absolute path to the SDK. Fixme.
 BUILD_DEKTEC=0
 DEKTEC_DRV=$PWD/dektecsdk/2019.11.0/Drivers/DtPcie/Source/Linux
 DEKTEC_SDK=$PWD/dektecsdk/2019.11.0/DTAPI
