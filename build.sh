@@ -197,6 +197,18 @@ elif [ "$1" == "vid.obe.3.2.7" ]; then
 	BUILD_JSONC=0
 	BUILD_LIBLTNTSTOOLS=1
 	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
+elif [ "$1" == "vid.obe.3.2.8" ]; then
+	OBE_TAG=vid.obe.3.2.8
+	LIBKLVANC_TAG=vid.obe.1.2.2
+	LIBKLSCTE35_TAG=vid.obe.1.2.0
+	LIBMPEGTS_TAG=hevc-dev
+	BUILD_X265=1
+	BUILD_LIBAV=0
+	BUILD_VAAPI=0
+	BUILD_LIBWEBSOCKETS=0
+	BUILD_JSONC=0
+	BUILD_LIBLTNTSTOOLS=1
+	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
 elif [ "$1" == "vid.obe.3.3.0" ]; then
 	OBE_TAG=vid.obe.3.3.0
 	LIBKLVANC_TAG=vid.obe.1.2.2
