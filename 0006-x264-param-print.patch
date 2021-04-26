@@ -1,0 +1,144 @@
+diff --git a/encoder/encoder.c b/encoder/encoder.c
+index 221b018..64b9c5f 100644
+--- a/encoder/encoder.c
++++ b/encoder/encoder.c
+@@ -1779,11 +1779,139 @@ int x264_encoder_reconfig( x264_t *h, x264_param_t *param )
+     return ret;
+ }
+ 
++#define P(name) { printf(#name " = %d\n", p->name); }
++#define V(name) { printf("vui." #name " = %d\n", p->vui.name); }
++#define R(name) { printf("rc." #name " = %d\n", p->rc.name); }
++#define A(name) { printf("analyse." #name " = %d\n", p->analyse.name); }
++static void x264_encoder_parameters_print(x264_param_t *p)
++{
++    P(cpu);
++
++    P(i_threads);
++    P(i_lookahead_threads);
++    P(b_sliced_threads);
++    P(b_cpu_independent);
++    P(i_sync_lookahead);
++
++    P(i_width);
++    P(i_height);
++    P(i_csp);
++    //P(i_bitdepth);
++    P(i_level_idc);
++    P(i_frame_total);
++    P(i_profile);
++    P(i_nal_hrd);
++
++    V(i_sar_height);
++    V(i_sar_width);
++    V(i_overscan);
++    V(i_vidformat);
++    V(b_fullrange);
++    V(i_colorprim);
++    V(i_transfer);
++    V(i_colmatrix);
++    V(i_chroma_loc);
++
++    P(i_frame_reference);
++    P(i_dpb_size);
++    P(i_keyint_max);
++    P(i_keyint_min);
++    P(i_scenecut_threshold);
++    P(b_intra_refresh);
++
++    P(i_bframe);
++    P(i_bframe_adaptive);
++    P(i_bframe_bias);
++    P(i_bframe_pyramid);
++    P(b_open_gop);
++    P(b_bluray_compat);
++    //P(i_avcintra_class);
++    //P(i_avcintra_flavor);
++
++    P(b_deblocking_filter);
++    P(i_deblocking_filter_alphac0);
++    P(i_deblocking_filter_beta);
++
++    P(b_cabac);
++    P(i_cabac_init_idc);
++
++    P(b_interlaced);
++    P(b_constrained_intra);
++
++    P(i_cqm_preset);
++
++    A(intra);
++    A(inter);
++    A(b_transform_8x8);
++    A(i_weighted_pred);
++    A(b_weighted_bipred);
++    A(i_direct_mv_pred);
++    A(i_chroma_qp_offset);
++    A(i_me_method);
++    A(i_me_range);
++    A(i_mv_range);
++    A(i_mv_range_thread);
++    A(i_subpel_refine);
++    A(b_chroma_me);
++    A(b_mixed_references);
++    A(i_trellis);
++    A(b_fast_pskip);
++    A(b_dct_decimate);
++    A(i_noise_reduction);
++    A(b_psy);
++    A(b_mb_info);
++    A(b_mb_info_update);
++    A(i_luma_deadzone[0]);
++    A(i_luma_deadzone[1]);
++    A(b_psnr);
++    A(b_ssim);
++
++
++    R(i_rc_method);
++    R(i_qp_constant);
++    R(i_qp_min);
++    R(i_qp_max);
++    R(i_qp_step);
++
++    R(i_bitrate);
++    R(i_vbv_max_bitrate);
++    R(i_vbv_buffer_size);
++
++    //R(b_filler);
++
++    R(i_aq_mode);
++    R(b_mb_tree);
++    R(i_lookahead);
++
++    P(i_frame_packing);
++    //P(i_alternative_transfer);
++    P(b_aud);
++    P(b_repeat_headers);
++    P(b_annexb);
++    P(i_sps_id);
++    P(b_vfr_input);
++    P(b_pulldown);
++    P(i_fps_num);
++    P(i_fps_den);
++    P(i_timebase_num);
++    P(i_timebase_den);
++    P(b_tff);
++    P(b_pic_struct);
++    P(b_fake_interlaced);
++    P(b_stitchable);
++    P(b_opencl);
++    P(i_slice_max_size);
++    P(i_slice_max_mbs);
++    P(i_slice_min_mbs);
++    P(i_slice_count);
++    P(i_slice_count_max);
++}
+ /****************************************************************************
+  * x264_encoder_parameters:
+  ****************************************************************************/
+ void x264_encoder_parameters( x264_t *h, x264_param_t *param )
+ {
++    x264_encoder_parameters_print(param);
+     memcpy( param, &h->thread[h->i_thread_phase]->param, sizeof(x264_param_t) );
+ }
+ 
