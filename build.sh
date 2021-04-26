@@ -40,6 +40,27 @@ if [ "$1" == "" ]; then
 	# Fine if they do not specify a tag
 	echo "No specific tag specified.  Using master"
 	OBE_TAG=master
+elif [ "$1" == "--tarball" ]; then
+	# copy the current obe binary and any deps into something
+	# that the LTN release manager can absorb.
+	rm -f tarball.tgz
+	mkdir -p ltn-tarball/ltn/ltn_encoder/bin
+	cp obe-rt/obe/obecli ltn-tarball/ltn/ltn_encoder
+	cp -r cfg ltn-tarball/ltn/ltn_encoder
+	cp -r NDI/sdk/lib/x86_64-linux-gnu ltn-tarball/ltn/ltn_encoder/lib
+	cp -r johnlane/ltn_confs ltn-tarball/ltn
+	cp -r johnlane/services ltn-tarball/ltn
+	cp -r johnlane/ltn_encoder/controller ltn-tarball/ltn/ltn_encoder
+	cp -r johnlane/ltn_encoder/*.conf ltn-tarball/ltn/ltn_encoder
+	cp -r johnlane/ltn_encoder/README ltn-tarball/ltn/ltn_encoder
+	cp -r johnlane/ltn_encoder/CHANGELOG.md ltn-tarball/ltn/ltn_encoder
+	cp -r johnlane/ltn_encoder/conf_templates ltn-tarball/ltn/ltn_encoder
+	cp NDI/sdk/bin/x86_64-linux-gnu/ndi-record ltn-tarball/ltn/ltn_encoder/bin
+	echo 'setenv LD_LIBRARY_PATH $LD_LIBRARY_PATH:$PWD/lib' >ltn-tarball/ltn/ltn_encoder/screenrc
+	echo 'setenv NDI_CONFIG_DIR $PWD/cfg' >>ltn-tarball/ltn/ltn_encoder/screenrc
+	tar -zcf tarball.tgz -C ltn-tarball .
+	rm -rf ltn-tarball
+	exit 0
 elif [ "$1" == "--installdeps" ]; then
 
 	if [ -f /.dockerenv ]; then
