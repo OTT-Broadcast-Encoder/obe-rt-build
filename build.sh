@@ -125,19 +125,19 @@ elif [ "$1" == "vid.obe.2.0.11" ]; then
 	OBE_TAG=vid.obe.2.0.11
 	LIBKLVANC_TAG=vid.obe.1.1.5
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.1
 	BUILD_X265=1
 elif [ "$1" == "vid.obe.2.0.12" ]; then
 	OBE_TAG=vid.obe.2.0.12
 	LIBKLVANC_TAG=vid.obe.1.1.5
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.1
 	BUILD_X265=1
 elif [ "$1" == "vid.obe.2.0.14" ]; then
 	OBE_TAG=vid.obe.2.0.14
 	LIBKLVANC_TAG=vid.obe.1.2.1
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.1
 	BUILD_X265=1
 elif [ "$1" == "vid.obe.2.0.15" ]; then
 	OBE_TAG=vid.obe.2.0.15
@@ -149,25 +149,25 @@ elif [ "$1" == "vid.obe.2.0.16" ]; then
 	OBE_TAG=vid.obe.2.0.16
 	LIBKLVANC_TAG=vid.obe.1.2.1
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.1
 	BUILD_X265=1
 elif [ "$1" == "vid.obe.2.0.22" ]; then
 	OBE_TAG=vid.obe.2.0.22
 	LIBKLVANC_TAG=vid.obe.1.2.2
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.1
 	BUILD_X265=1
 elif [ "$1" == "vid.obe.2.0" ]; then
 	OBE_TAG=2.0.0
 	LIBKLVANC_TAG=vid.obe.1.2.2
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.1
 	BUILD_X265=1
 elif [ "$1" == "vid.obe.3.0.0" ]; then
 	OBE_TAG=3.0.0
 	LIBKLVANC_TAG=vid.obe.1.2.2
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.1
 	BUILD_X265=1
 	BUILD_LIBAV=0
 	BUILD_VAAPI=0
@@ -178,7 +178,7 @@ elif [ "$1" == "vid.obe.3.0.3" ]; then
 	OBE_TAG=vid.obe.3.0.3
 	LIBKLVANC_TAG=vid.obe.1.2.2
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.1
 	BUILD_X265=1
 	BUILD_LIBAV=0
 	BUILD_VAAPI=0
@@ -188,7 +188,7 @@ elif [ "$1" == "vid.obe.3.1.0" ]; then
 	OBE_TAG=vid.obe.3.1.0
 	LIBKLVANC_TAG=vid.obe.1.2.2
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.1
 	BUILD_X265=1
 	BUILD_LIBAV=0
 	BUILD_VAAPI=0
@@ -199,7 +199,7 @@ elif [ "$1" == "vid.obe.3.2.6" ]; then
 	OBE_TAG=vid.obe.3.2.6
 	LIBKLVANC_TAG=vid.obe.1.2.2
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.1
 	BUILD_X265=1
 	BUILD_LIBAV=0
 	BUILD_VAAPI=0
@@ -210,7 +210,31 @@ elif [ "$1" == "vid.obe.3.2.7" ]; then
 	OBE_TAG=vid.obe.3.2.7
 	LIBKLVANC_TAG=vid.obe.1.2.2
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.1
+	BUILD_X265=1
+	BUILD_LIBAV=0
+	BUILD_VAAPI=0
+	BUILD_LIBWEBSOCKETS=0
+	BUILD_JSONC=0
+	BUILD_LIBLTNTSTOOLS=1
+	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
+elif [ "$1" == "vid.obe.3.2.8" ]; then
+	OBE_TAG=vid.obe.3.2.8
+	LIBKLVANC_TAG=vid.obe.1.2.2
+	LIBKLSCTE35_TAG=vid.obe.1.2.0
+	LIBMPEGTS_TAG=hevc-dev-0.1
+	BUILD_X265=1
+	BUILD_LIBAV=0
+	BUILD_VAAPI=0
+	BUILD_LIBWEBSOCKETS=0
+	BUILD_JSONC=0
+	BUILD_LIBLTNTSTOOLS=1
+	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
+elif [ "$1" == "vid.obe.3.2.9" ]; then
+	OBE_TAG=vid.obe.3.2.9
+	LIBKLVANC_TAG=vid.obe.1.2.2
+	LIBKLSCTE35_TAG=vid.obe.1.2.0
+	LIBMPEGTS_TAG=hevc-dev-0.2
 	BUILD_X265=1
 	BUILD_LIBAV=0
 	BUILD_VAAPI=0
@@ -222,7 +246,7 @@ elif [ "$1" == "vid.obe.3.3.0" ]; then
 	OBE_TAG=vid.obe.3.3.0
 	LIBKLVANC_TAG=vid.obe.1.2.2
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.1
 	BUILD_X265=1
 	BUILD_LIBAV=0
 	BUILD_VAAPI=0
@@ -234,7 +258,7 @@ elif [ "$1" == "vid.obe.3.4.0" ]; then
 	OBE_TAG=vid.obe.3.4.0
 	LIBKLVANC_TAG=vid.obe.1.2.2
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.1
 	BUILD_X265=1
 	BUILD_LIBAV=0
 	BUILD_VAAPI=0
@@ -262,7 +286,7 @@ elif [ "$1" == "vid.obe.3.0-dev" ]; then
 	OBE_TAG=3.0.0
 	LIBKLVANC_TAG=vid.obe.1.2.2
 	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.2
 	BUILD_X265=1
 	BUILD_LIBAV=0
 	BUILD_VAAPI=0
@@ -300,7 +324,7 @@ elif [ "$1" == "1.1.21" ]; then
 	OBE_TAG=1.1.21
 	LIBKLVANC_TAG=vid.obe.1.1.5
 	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=hevc-dev
+	LIBMPEGTS_TAG=hevc-dev-0.1
 else
 	echo "Invalid argument"
 	exit 1
