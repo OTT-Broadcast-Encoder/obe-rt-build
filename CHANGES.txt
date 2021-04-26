@@ -1,4 +1,13 @@
 
+v3.5.0
+    Bugfix:
+    * Improve SCTE35 timing/slice calculation in Normal Latency mode.
+    * Improvements to SCTE35 for HEVC and H264, tested in the following formats:
+      720x480i29.97
+      1920x1080i29.97
+      1280x720p59.94
+      1920x1080p59.94
+
 v3.5.0b1
     Notes:
     * Only to be used for customer X, reporting the SCTE35 slice issue
