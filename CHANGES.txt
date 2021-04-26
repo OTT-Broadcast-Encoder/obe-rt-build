@@ -1,10 +1,28 @@
 
+v3.5.0b1
+    Notes:
+    * Only to be used for customer X, reporting the SCTE35 slice issue
+    * NOT TO BE DEPLOYED TO ANY OTHER SITE
+    * Only to be used with 1080i29.97 input sources in Normal or Low Latency configurations.
+
+    Key feature changes:
+    * Improve SCTE35 timing/slice calculation in Normal Latency mode.
+    * Add fix for proper TS padding for SCTE-35 messages
+
+    Developer changes
+    * decklink: add set variable option to burn in walltime to the decklink frame, prior to encode
+
 v3.4.0
     Key feature changes:
     * Formalize support for NDI SDK 4.5, enable encoding from NDI to IP.
 
     Developer changes:
     * Disabled by default, some debug code around x264 related to codec tuning.
+    * Ongoing NDI related work
+    * ndi: cleanups. Add suport for 8xaudio. bugfix with audio arriving late in 1080p59.94 mode
+    * decklink: On Apple platforms, don't try to configure SD assembly functions, and avoid an unused var
+    * Support for decklink inputs on Apple platforms (and various Apple platform related fixes)
+    * Developer levels support (non-functional) for AVFoundation on Apple platforms.
 
 v3.3.0
     Key feature changes:
