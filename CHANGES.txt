@@ -1,4 +1,16 @@
 
+v3.6.0
+    SCTE35 related changes:
+    * Don't output PMT ES data alignment descriptors in SCTE35 streams
+    * Don't output PMT CUE registration descriptors if SCTE35 is disabled in the encoder.
+    * Removed all PMT ES CUE identification descriptors, no longer output by default.
+    Bugfix:
+    * Incorrect/default iframe-interval was being set for 24p content, resulting in od video bitrates.
+    Changes:
+    * Refactor the v3.5.0b1 SCTE104/35 translation and avoid using scte35 pts_adjument field.
+    Known Issues:
+    * SCTE104/35 is not working for HEVC encode sessions (but has no current customer today).
+
 v3.5.0
     Bugfix:
     * Improve SCTE35 timing/slice calculation in Normal Latency mode.
