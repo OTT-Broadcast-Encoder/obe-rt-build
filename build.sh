@@ -8,6 +8,7 @@ LIBZVBI_TAG=e62d905e00cdd1d6d4333ead90fb5b44bfb49371
 X265_TAG=Release_3.3
 X265_TAG=ef1c5205fc14d436b71b1459eba0c85fec0013b7
 X264_TIP=0
+X264_BITDEPTH=8
 JSONC_TAG=6c55f65d07a972dbd2d1668aab2e0056ccdd52fc
 BUILD_X265=0
 BUILD_LIBWEBSOCKETS=0
@@ -649,7 +650,7 @@ if [ "$X264_TIP" -eq 1 ]; then
 	pushd x264
 		if [ ! -f .skip ]; then
 			make clean
-			./configure --enable-static --prefix=$PWD/../target-root/usr/local --disable-lavf --disable-swscale --disable-opencl --bit-depth=8
+			./configure --enable-static --prefix=$PWD/../target-root/usr/local --disable-lavf --disable-swscale --disable-opencl --bit-depth=$X264_BITDEPTH
 			make -j$JOBS && make install
 			touch .skip
 		fi
@@ -658,7 +659,7 @@ else
 	pushd x264-obe
 		if [ ! -f .skip ]; then
 			make clean
-			./configure --enable-static --disable-cli --prefix=$PWD/../target-root/usr/local --disable-lavf --disable-swscale --disable-opencl
+			./configure --enable-static --disable-cli --prefix=$PWD/../target-root/usr/local --disable-lavf --disable-swscale --disable-opencl --bit-depth=$X264_BITDEPTH
 			make -j$JOBS && make install
 			touch .skip
 		fi
