@@ -1,4 +1,9 @@
 
+v3.8.0
+    * Bugfix: very long SCTE104 messages would be truncled (by libklvanc) and the resulting
+      SCTE35 message would contain blank/null fields.
+    * Merged the upstream libklvanc tree, various fixes (unused by ltn encoder) related to its functionality.
+
 v3.7.1
     * Add load average values during output of core statistics - debug feature
     * Add output output TRIM feature, to add latency to the IP output. For use in low latency mode.
