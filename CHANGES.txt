@@ -1,4 +1,8 @@
 
+v3.7.1
+    * Add load average values during output of core statistics - debug feature
+    * Add output output TRIM feature, to add latency to the IP output. For use in low latency mode.
+
 v3.6.0
     SCTE35 related changes:
     * Don't output PMT ES data alignment descriptors in SCTE35 streams
