@@ -17,6 +17,8 @@ BUILD_JSONC=0
 BUILD_LIBAV=1
 BUILD_VAAPI=0
 BUILD_NVENC=0
+BUILD_VEGA=0
+VEGA_SDK=$PWD/vega-sdk
 BUILD_LIBLTNTSTOOLS=0
 LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
 # Absolute path to the SDK. Fixme.
@@ -755,6 +757,12 @@ build_obe() {
 	if [ $BUILD_NDI -eq 1 ]; then
 		export CFLAGS="$CFLAGS -I$NDI_SDK/include"
 		export LDFLAGS="$LDFLAGS -L$NDI_SDK/lib/x86_64-linux-gnu"
+	fi
+	if [ $BUILD_VEGA -eq 1 ]; then
+		export CFLAGS="$CFLAGS -I$VEGA_SDK/include"
+		export CFLAGS="$CFLAGS -I$VEGA_SDK/include/libvega_encoder_api"
+		export CFLAGS="$CFLAGS -I$VEGA_SDK/include/libvega_capture_api"
+		export LDFLAGS="$LDFLAGS -L$VEGA_SDK/lib"
 	fi
 	if [ $BUILD_DEKTEC -eq 1 ]; then
 		export CFLAGS="$CFLAGS -I$DEKTEC_SDK_INC"
