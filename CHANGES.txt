@@ -1,4 +1,10 @@
 
+v3.10.0
+    * Added debug command to inject multi-part fragmented SCTE104 message for testing
+    * Added support for fragmented long SCTE104 messages
+    * Added multiple magic commands to mangle output packets - useful for testing downstream equipment
+    * HEVC improvement (ongoing, pre-empted by the long 104 bug above)
+
 v3.9.0
     * Bugfix: Encoder outage after 82 days of runtime.
     * Enhancement: Add dialnorm support when doing AC3 encoding. Default is -31, now its adjustable 0 to -31.
