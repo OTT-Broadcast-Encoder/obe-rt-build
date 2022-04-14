@@ -1,4 +1,11 @@
 
+v3.9.0
+    * Bugfix: Encoder outage after 82 days of runtime.
+    * Enhancement: Add dialnorm support when doing AC3 encoding. Default is -31, now its adjustable 0 to -31.
+    * Changes to the codebase related to the Vega hardware encoder as a new input type (disabled).
+    * New internal debug command that dumps the contents of the smoother queue, to assist in debugging.
+    * Small amount of refactoring related to audio parameter passing, various code comments and clarifications.
+
 v3.8.0
     * Bugfix: very long SCTE104 messages would be truncled (by libklvanc) and the resulting
       SCTE35 message would contain blank/null fields.
