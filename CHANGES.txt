@@ -1,4 +1,8 @@
 
+v3.11.0
+    * Tidy up NDI support for the 1080p29.97 use case (only supported use case).
+    * Adjustments to audio timing model for NDI to support support upstream vison mixer.
+
 v3.10.0
     * Added debug command to inject multi-part fragmented SCTE104 message for testing
     * Added support for fragmented long SCTE104 messages
