@@ -1,4 +1,13 @@
 
+v3.14.1
+    * Added support for multiple SCTE35 pids
+    * Added support for SCTE104 as_index and dpi_pid_index to scte35 pids
+    * set variable added to disable 608 and VBI SCTE procesing
+
+v3.12.1
+    * Ongoing changes to support VEGA (in dev)
+    * Audio 11172-3 ES type adjustment setting
+
 v3.11.0
     * Tidy up NDI support for the 1080p29.97 use case (only supported use case).
     * Adjustments to audio timing model for NDI to support support upstream vison mixer.
