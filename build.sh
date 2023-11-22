@@ -629,6 +629,17 @@ if [ ! -d twolame-0.3.13 ]; then
 	tar zxf twolame-0.3.13.tar.gz
 fi
 
+if [ $BUILD_VEGA3311 -eq 1 ]; then
+	if [ ! -d $VEGA_SDK ]; then
+		if [ ! -f vega-sdk-ltn-0.0.0.tgz ]; then
+			echo "VEGA SDK required to build the product. vega-sdk-ltn-0.0.0.tgz missing, aborting."
+			exit 1
+		fi
+
+		tar zxf vega-sdk-ltn-0.0.0.tgz
+	fi
+fi
+
 if [ $BUILD_DEKTEC -eq 1 ]; then
 	pushd $DEKTEC_DRV
 		make
