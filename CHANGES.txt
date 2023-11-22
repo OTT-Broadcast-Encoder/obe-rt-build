@@ -1,4 +1,8 @@
 
+v4.0.1
+    * Enabled support for the vega 3311 high density encoding card (gold leaf)
+    * Vega: Experimental support for better detecting signal loss and restarting service
+
 v3.14.1
     * Added support for multiple SCTE35 pids
     * Added support for SCTE104 as_index and dpi_pid_index to scte35 pids
