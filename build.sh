@@ -515,7 +515,7 @@ if [ $BUILD_NDI -eq 1 ]; then
 	mkdir -p NDI
 	cd NDI
 	if [ ! -f InstallNDISDK_v4_Linux.tar.gz ]; then
-		wget https://downloads.ndi.tv/SDK/NDI_SDK_Linux/InstallNDISDK_v4_Linux.tar.gz
+		wget --no-check-certificate https://downloads.ndi.tv/SDK/NDI_SDK_Linux/InstallNDISDK_v4_Linux.tar.gz
 	fi
 	if [ ! -f InstallNDISDK_v4_Linux.sh ]; then
 		tar zxf InstallNDISDK_v4_Linux.tar.gz
