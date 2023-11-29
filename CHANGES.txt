@@ -1,4 +1,7 @@
 
+v4.0.2
+    * Some additional debug added when detecting a signal
+
 v4.0.1
     * Enabled support for the vega 3311 high density encoding card (gold leaf)
     * Vega: Experimental support for better detecting signal loss and restarting service
