@@ -1,4 +1,9 @@
 
+v4.0.3
+    * Support for WST World Teletext Subtitles
+    * Support for VANC reception/injection via UDP socket
+    * AC3 fixes with the vega card
+
 v4.0.2
     * Some additional debug added when detecting a signal
 
