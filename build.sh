@@ -443,8 +443,8 @@ elif [ "$1" == "vid.obe.4.0.3" ]; then
 	BUILD_NDI=1
 	BUILD_DEKTEC=0
 	BUILD_VEGA3311=1
-elif [ "$1" == "vid.obe.4.0.4" ]; then
-	OBE_TAG=vid.obe.4.0.4
+elif [ "$1" == "vid.obe.4.0.5" ]; then
+	OBE_TAG=vid.obe.4.0.5
 	LIBKLVANC_TAG=vid.obe.1.10.0
 	LIBKLSCTE35_TAG=vid.obe.1.3.0
 	LIBMPEGTS_TAG=hevc-dev

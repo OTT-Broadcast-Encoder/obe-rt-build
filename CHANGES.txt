@@ -1,4 +1,7 @@
 
+v4.0.5
+    * WST startup bug when num aud pairs = 1
+
 v4.0.4
     * Packet framing changes related to WST World Teletext Subtitles
     * Bugfix WST support when less than 8 audio channels are specified
