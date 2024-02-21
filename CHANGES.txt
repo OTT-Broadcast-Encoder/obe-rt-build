@@ -1,4 +1,8 @@
 
+v4.0.4
+    * Packet framing changes related to WST World Teletext Subtitles
+    * Bugfix WST support when less than 8 audio channels are specified
+
 v4.0.3
     * Support for WST World Teletext Subtitles
     * Support for VANC reception/injection via UDP socket
