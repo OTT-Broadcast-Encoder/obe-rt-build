@@ -1,4 +1,7 @@
 
+v4.1.0
+    * Gain setting added to configuration, allowing stereo pairs to be gain adjusted.
+
 v4.0.5
     * WST startup bug when num aud pairs = 1
 
