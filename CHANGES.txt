@@ -1,3 +1,6 @@
+v4.1.4
+    * Adjusted audio gain code to support 5.1 discrete configurations
+    * Audio regression introduced in 4.0.3 related to vega, broke 1080i29.97 AAC encoding.
 
 v4.1.0
     * Gain setting added to configuration, allowing stereo pairs to be gain adjusted.
