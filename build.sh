@@ -579,6 +579,7 @@ fi
 BMSDK_10_11_2=$PWD/bmsdk/10.11.2/$PLAT
 BMSDK_10_8_5=$PWD/bmsdk/10.8.5/$PLAT
 BMSDK_10_1_1=$PWD/bmsdk/10.1.1/$PLAT
+BMSDK_12_9=$PWD/bmsdk/12.9/$PLAT
 
 if [ $BUILD_LIBLTNTSTOOLS -eq 1 ]; then
 	if [ ! -d libltntstools ]; then
@@ -1006,3 +1007,4 @@ build_obe() {
 
 #build_obe $OBE_TAG $BMSDK_10_1_1
 build_obe $OBE_TAG $BMSDK_10_8_5
+#build_obe $OBE_TAG $BMSDK_12_9
