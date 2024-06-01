@@ -1,5 +1,5 @@
 bmsdk
-x265
+x265/
 fdk-aac/
 libav-obe/
 libklscte35/
@@ -14,11 +14,10 @@ x264-obe/
 NDI/
 vaapi/libdrm-*/
 vaapi/intel-*/
-vaapi/libva
-vaapi/libva-utils
-libltntstools
-ffmpeg
-json-c
-libwebsockets
-libzvbi
+vaapi/libva*
+libltntstools/
+ffmpeg/
+json-c/
+libwebsockets/
+libzvbi/
 obecli
