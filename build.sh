@@ -84,7 +84,7 @@ BMSDK_12_9=$PWD/bmsdk/12.9/Linux
 
 if [ $BUILD_LIBLTNTSTOOLS -eq 1 ]; then
 	if [ ! -d libltntstools ]; then
-		git clone https://github.com/LTNGlobal-opensource/libltntstools
+		git clone https://github.com/LTNGlobal-opensource/libltntstools.git
 		cd libltntstools && git checkout $LIBLTNTSTOOLS_TAG && cd ..
 	fi
 fi
