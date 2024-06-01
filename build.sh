@@ -100,9 +100,9 @@ if [ $BUILD_X265 -eq 1 ]; then
 		git clone https://github.com/videolan/x265.git
 		cd x265
 		git checkout $X265_TAG
-		patch -p1 <../0003-x265-sei-overflow.patch
-		patch -p1 <../0004-x265-sei-additional-elements-segfault.patch
-		#patch -p1 <../0005-x265-additional-recovery-points.patch
+		patch -p1 <../patches/0003-x265-sei-overflow.patch
+		patch -p1 <../patches/0004-x265-sei-additional-elements-segfault.patch
+		#patch -p1 <../patches/0005-x265-additional-recovery-points.patch
 		cd ..
 	fi
 fi
@@ -112,7 +112,7 @@ if [ ! -d libzvbi ]; then
 	if [ "$LIBZVBI_TAG" != "" ]; then
 		cd libzvbi
 		git checkout $LIBZVBI_TAG
-		patch -p1 <../0000-libzvbi-remove-png-dep.patch
+		patch -p1 <../patches/0000-libzvbi-remove-png-dep.patch
 		cd ..
 	fi
 fi
@@ -156,7 +156,7 @@ if [ ! -d libyuv ]; then
 	pushd libyuv
 		# Make sure we use a known-good version
 		git checkout $LIBYUV_TAG
-		patch -p1 <../0002-libyuv-csc-height.patch
+		patch -p1 <../patches/0002-libyuv-csc-height.patch
 	popd
 fi
 
