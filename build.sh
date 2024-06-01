@@ -13,19 +13,13 @@ X265_TAG=ef1c5205fc14d436b71b1459eba0c85fec0013b7
 X264_BITDEPTH=8
 JSONC_TAG=6c55f65d07a972dbd2d1668aab2e0056ccdd52fc
 BUILD_X265=1
-BUILD_JSONC=0
 BUILD_VAAPI=1
-BUILD_NVENC=0
-BUILD_VEGA3301=0
-BUILD_VEGA3311=0
-VEGA_SDK=$PWD/vega-sdk
 BUILD_LIBLTNTSTOOLS=1
 LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
 # Absolute path to the SDK. Fixme.
 BUILD_NDI=1
 NDI_SDK=$PWD/NDI/sdk
 # Absolute path to the SDK. Fixme.
-BUILD_DEKTEC=0
 DEKTEC_DRV=$PWD/dektecsdk/2019.11.0/Drivers/DtPcie/Source/Linux
 DEKTEC_SDK=$PWD/dektecsdk/2019.11.0/DTAPI
 DEKTEC_SDK_INC=$PWD/dektecsdk/2019.11.0/DTAPI/Include
@@ -85,13 +79,6 @@ if [ $BUILD_LIBLTNTSTOOLS -eq 1 ]; then
 	fi
 fi
 
-if [ $BUILD_JSONC -eq 1 ]; then
-	if [ ! -d json-c ]; then
-		git clone https://github.com/json-c/json-c.git
-		cd json-c && git checkout $JSONC_TAG && cd ..
-	fi
-fi
-
 if [ $BUILD_NDI -eq 1 ]; then
 	mkdir -p NDI
 	cd NDI
@@ -106,20 +93,6 @@ if [ $BUILD_NDI -eq 1 ]; then
 		mv 'NDI SDK for Linux' sdk
 	fi
 	cd ..
-fi
-
-if [ $BUILD_DEKTEC -eq 1 ]; then
-	mkdir -p dektecsdk
-	if [ ! -f dektecsdk/LinuxSDK_v2019.11.0.tar.gz ]; then
-		cd dektecsdk
-		wget https://www.dektec.com/products/applications/DtRecord/Downloads/DtRecord_v4.9.0.zip
-		wget https://www.dektec.com/products/SDK/DTAPI/Downloads/LinuxSDK_v2019.11.0.tar.gz
-		wget https://www.dektec.com/products/applications/DtInfoCL/downloads/DtInfoCL.zip
-		wget https://www.dektec.com/products/sdk/MatrixApi/downloads/MatrixExamples.zip
-		tar zxf LinuxSDK_v2019.11.0.tar.gz
-		mv LinuxSDK 2019.11.0
-		cd ..
-	fi
 fi
 
 if [ $BUILD_X265 -eq 1 ]; then
@@ -191,29 +164,6 @@ if [ ! -d twolame-0.3.13 ]; then
 	tar zxf twolame-0.3.13.tar.gz
 fi
 
-if [ $BUILD_VEGA3311 -eq 1 ]; then
-	if [ ! -d $VEGA_SDK ]; then
-		if [ ! -f vega-sdk-ltn-0.0.0.tgz ]; then
-			echo "VEGA SDK required to build the product. vega-sdk-ltn-0.0.0.tgz missing, aborting."
-			exit 1
-		fi
-
-		tar zxf vega-sdk-ltn-0.0.0.tgz
-	fi
-fi
-
-if [ $BUILD_DEKTEC -eq 1 ]; then
-	pushd $DEKTEC_DRV
-		make
-		sudo insmod ./DtPcie.ko
-		if [ ! -d /dev/DtPcie0 ]; then
-			echo "Dektec module load failed, aborting."
-			exit 1
-		fi
-	popd
-fi
-
-
 if [ $BUILD_LIBLTNTSTOOLS -eq 1 ]; then
 	pushd libltntstools
 		if [ ! -f .skip ]; then
@@ -234,19 +184,6 @@ if [ $BUILD_VAAPI -eq 1 ]; then
 	popd
 fi
 
-if [ $BUILD_NVENC -eq 1 ]; then
-	# References:
-	# https://linuxconfig.org/how-to-install-nvidia-cuda-toolkit-on-centos-7-linux
-	# https://arstech.net/compile-ffmpeg-with-nvenc-h264/
-	# TODO
-	# Blacklist the nouveau driver
-	# Install the proprietary NVidia driver
-	# $ wget https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-repo-rhel7-10.0.130-1.x86_64.rpm
-	# $ sudo rpm -i cuda-repo-rhel7-10.0.130-1.x86_64.rpm
-	# Install cuda and A LOT of deps
-	# $ sudo yum -i install cuda
-	:
-fi
 
 if [ $BUILD_JSONC -eq 1 ]; then
 	pushd json-c
@@ -383,22 +320,6 @@ build_obe() {
 	if [ $BUILD_NDI -eq 1 ]; then
 		export CFLAGS="$CFLAGS -I$NDI_SDK/include"
 		export LDFLAGS="$LDFLAGS -L$NDI_SDK/lib/x86_64-linux-gnu"
-	fi
-	if [ $BUILD_VEGA3311 -eq 1 ]; then
-		export CFLAGS="$CFLAGS -I$VEGA_SDK/vega3311/include/libvega_capture_api"
-		export CFLAGS="$CFLAGS -I$VEGA_SDK/vega3311/include/libvega_bqb_api"
-		export CFLAGS="$CFLAGS -I$VEGA_SDK/vega3311/include/libvega_transmit_api"
-		export LDFLAGS="$LDFLAGS -L$VEGA_SDK/vega3311/lib"
-	fi
-	if [ $BUILD_VEGA3301 -eq 1 ]; then
-		export CFLAGS="$CFLAGS -I$VEGA_SDK/vega3301/include/libvega_capture_api"
-		export CFLAGS="$CFLAGS -I$VEGA_SDK/vega3301/include/libvega_encoder_api"
-		export CFLAGS="$CFLAGS -I$VEGA_SDK/vega3301/include/libvega_bqb_api"
-		export LDFLAGS="$LDFLAGS -L$VEGA_SDK/vega3301/lib"
-	fi
-	if [ $BUILD_DEKTEC -eq 1 ]; then
-		export CFLAGS="$CFLAGS -I$DEKTEC_SDK_INC"
-		export CPPFLAGS=$CFLAGS
 	fi
 
 	if [ -f autogen.sh ]; then
