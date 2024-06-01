@@ -52,6 +52,8 @@ elif [ "$1" == "clean" ]; then
 	rm -rf  json-c
 	rm -rf  libltntstools
 	rm -f   tarball.tgz
+
+	exit 0
 elif [ "$1" == "installdeps" ]; then
 	sudo apt-get install git -y
 	sudo apt-get install unzip -y
@@ -89,6 +91,7 @@ elif [ "$1" == "installdeps" ]; then
 	exit 0
 else
 	echo "Invalid argument"
+
 	exit 1
 fi
 
