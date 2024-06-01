@@ -11,8 +11,14 @@ obe-rt/
 target-root/
 twolame-0.3.13/
 x264-obe/
+NDI/
+vaapi/libdrm-*/
+vaapi/intel-*/
+vaapi/libva
+vaapi/libva-utils
+libltntstools
 ffmpeg
 json-c
 libwebsockets
 libzvbi
-
+obecli
