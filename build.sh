@@ -5,25 +5,23 @@ JOBS=8
 FFMPEG_TAG=n4.2.1
 LIBYUV_TAG=cbe5385055b9360cacd14877450631b87eea1fcd
 LIBZVBI_TAG=e62d905e00cdd1d6d4333ead90fb5b44bfb49371
-X265_TAG=Release_3.3
+LIBKLVANC_TAG=vid.obe.1.10.0
+LIBKLSCTE35_TAG=vid.obe.1.3.0
+LIBMPEGTS_TAG=hevc-dev
 X265_TAG=ef1c5205fc14d436b71b1459eba0c85fec0013b7
-X264_TIP=0
 X264_BITDEPTH=8
 JSONC_TAG=6c55f65d07a972dbd2d1668aab2e0056ccdd52fc
-BUILD_X265=0
-BUILD_LIBWEBSOCKETS=0
-LIBWEBSOCKETS_TAG=v3.2.0
+BUILD_X265=1
 BUILD_JSONC=0
-BUILD_LIBAV=1
-BUILD_VAAPI=0
+BUILD_VAAPI=1
 BUILD_NVENC=0
 BUILD_VEGA3301=0
 BUILD_VEGA3311=0
 VEGA_SDK=$PWD/vega-sdk
-BUILD_LIBLTNTSTOOLS=0
+BUILD_LIBLTNTSTOOLS=1
 LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
 # Absolute path to the SDK. Fixme.
-BUILD_NDI=0
+BUILD_NDI=1
 NDI_SDK=$PWD/NDI/sdk
 # Absolute path to the SDK. Fixme.
 BUILD_DEKTEC=0
@@ -31,555 +29,58 @@ DEKTEC_DRV=$PWD/dektecsdk/2019.11.0/Drivers/DtPcie/Source/Linux
 DEKTEC_SDK=$PWD/dektecsdk/2019.11.0/DTAPI
 DEKTEC_SDK_INC=$PWD/dektecsdk/2019.11.0/DTAPI/Include
 
-# https://github.com/libjpeg-turbo/libjpeg-turbo.git
-# cd libjpeg-turbo
-# mkdir build
-# cd build
-# cmake -G"Unix Makefiles" -DCMAKE_INSTALL_PREFIX:PATH=$PWD/../../target-root/usr/local ..
-# make
-# make install
-
+BMSDK_REPO=https://github.com/LTNGlobal-opensource/bmsdk.git
 
 if [ "$1" == "" ]; then
-	# Fine if they do not specify a tag
-	echo "No specific tag specified.  Using master"
-	OBE_TAG=master
-elif [ "$1" == "--tarball" ]; then
-	# copy the current obe binary and any deps into something
-	# that the LTN release manager can absorb.
-	rm -f tarball.tgz
-	mkdir -p ltn-tarball/ltn/ltn_encoder/bin
-	cp obe-rt/obe/obecli ltn-tarball/ltn/ltn_encoder
-	cp -r cfg ltn-tarball/ltn/ltn_encoder
-	cp -r NDI/sdk/lib/x86_64-linux-gnu ltn-tarball/ltn/ltn_encoder/lib
-	cp -r johnlane/ltn_confs ltn-tarball/ltn
-	cp -r johnlane/services ltn-tarball/ltn
-	cp -r johnlane/ltn_encoder/controller ltn-tarball/ltn/ltn_encoder
-	cp -r johnlane/ltn_encoder/*.conf ltn-tarball/ltn/ltn_encoder
-	cp -r johnlane/ltn_encoder/README ltn-tarball/ltn/ltn_encoder
-	cp -r johnlane/ltn_encoder/CHANGELOG.md ltn-tarball/ltn/ltn_encoder
-	cp -r johnlane/ltn_encoder/conf_templates ltn-tarball/ltn/ltn_encoder
-	cp NDI/sdk/bin/x86_64-linux-gnu/ndi-record ltn-tarball/ltn/ltn_encoder/bin
-	echo 'setenv LD_LIBRARY_PATH $LD_LIBRARY_PATH:$PWD/lib' >ltn-tarball/ltn/ltn_encoder/screenrc
-	echo 'setenv NDI_CONFIG_DIR $PWD/cfg' >>ltn-tarball/ltn/ltn_encoder/screenrc
-	tar -zcf tarball.tgz -C ltn-tarball .
-	rm -rf ltn-tarball
+	echo "Building..."
+elif [ "$1" == "installdeps" ]; then
+	sudo apt-get install git -y
+	sudo apt-get install unzip -y
+	sudo apt-get install build-essential -y
+	sudo apt-get install gobjc -y
+	sudo apt-get install gobjc++ -y
+	sudo apt-get install cmake -y
+	sudo apt-get install yasm -y
+	sudo apt-get install autoconf -y
+	sudo apt-get install libtool -y
+	sudo apt-get install autotools-dev -y
+	sudo apt-get install automake -y
+	sudo apt-get install libreadline-dev -y
+	sudo apt-get install libvdpau-dev -y
+	sudo apt-get install libva-dev -y
+	sudo apt-get install libx11-dev -y
+	sudo apt-get install libzvbi0 -y
+	sudo apt-get install libzvbi-dev -y
+	sudo apt-get install libzvbi-common -y
+	sudo apt-get install libasound2-dev -y
+	sudo apt-get install libbz2-dev -y
+	sudo apt-get install liblzma-dev -y
+	sudo apt-get install libfdk-aac-dev -y
+	sudo apt-get install meson -y
+	sudo apt-get install pkg-config -y
+	sudo apt-get install libdrm-dev -y
+	sudo apt-get install libkmod-dev -y
+	sudo apt-get install libprocps-dev -y
+	sudo apt-get install libdw-dev -y
+	sudo apt-get install libpixman-1-dev -y
+	sudo apt-get install libcairo-dev -y
+	sudo apt-get install flex -y
+	sudo apt-get install bison -y
+
 	exit 0
-elif [ "$1" == "--installdeps" ]; then
-
-	if [ -f /.dockerenv ]; then
-		# Docker centos7.8 needs this
-		sudo yum -y install wget xz-devel
-	fi
-
-	# We need epel for YASM
-	sudo yum -y install epel-release
-	sudo yum -y install yum-utils
-
-	# We can't use nasm 2.15 with centos 7.8 because the rpmlibs
-	# are incompat. We have to build with nasm 2.14
-	#sudo yum-config-manager --add-repo http://www.nasm.us/nasm.repo
-	#sudo yum -y install nasm
-	#sudo yum repolist
-
-	RHAT_VERSION=`cat /etc/redhat-release`
-	if [ "$RHAT_VERSION" == "CentOS Linux release 7.8.2003 (Core)" ]; then
-		if [ ! -f nasm-2.14-0.fc27.x86_64.rpm ]; then
-			wget https://www.nasm.us/pub/nasm/releasebuilds/2.14/linux/nasm-2.14-0.fc27.x86_64.rpm
-		fi
-		sudo rpm -i nasm-2.14-0.fc27.x86_64.rpm
-	fi
-
-	sudo yum -y install libtool
-	sudo yum -y install libpng
-	sudo yum -y install yasm
-	sudo yum -y install cmake
-	sudo yum -y install perl-CPAN
-	sudo yum -y install perl-Digest-MD5
-	sudo yum -y install zlib-devel
-	sudo yum -y install bzip2-devel
-	sudo yum -y install readline-devel
-	sudo yum -y install ncurses-static
-	sudo yum -y install readline-static
-	sudo yum -y install alsa-lib-devel
-	sudo yum -y install pulseaudio-libs-devel
-	sudo yum -y install libpciaccess-devel
-	#sudo perl -MCPAN -e 'install Digest::Perl::MD5'
-	# 3.0.0
-	sudo yum -y install openssl-devel
-	# Satisfy OSX objC autotools rule on linux
-	sudo yum -y install gcc-objc
-	exit 0
-elif [ "$1" == "experimental" ]; then
-	OBE_TAG=experimental
-elif [ "$1" == "customerd" ]; then
-	OBE_TAG=customerd-0.1
-	LIBKLVANC_TAG=customerd-0.1
-	LIBKLSCTE35_TAG=customerd-0.1
-elif [ "$1" == "104_refactoring" ]; then
-	OBE_TAG=104_refactoring
-	LIBKLVANC_TAG=104_refactoring
-	LIBKLSCTE35_TAG=104_refactoring
-elif [ "$1" == "vid.obe.1.1" ]; then
-	OBE_TAG=vid.obe.1.1.20
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
-elif [ "$1" == "vid.obe.2.0.11" ]; then
-	OBE_TAG=vid.obe.2.0.11
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev-0.1
-	BUILD_X265=1
-elif [ "$1" == "vid.obe.2.0.12" ]; then
-	OBE_TAG=vid.obe.2.0.12
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=hevc-dev-0.1
-	BUILD_X265=1
-elif [ "$1" == "vid.obe.2.0.14" ]; then
-	OBE_TAG=vid.obe.2.0.14
-	LIBKLVANC_TAG=vid.obe.1.2.1
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev-0.1
-	BUILD_X265=1
-elif [ "$1" == "vid.obe.2.0.15" ]; then
-	OBE_TAG=vid.obe.2.0.15
-	LIBKLVANC_TAG=vid.obe.1.2.1
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=5442a8600d6d1eeb44e3bafe2b9992c531cd39b2
-	BUILD_X265=1
-elif [ "$1" == "vid.obe.2.0.16" ]; then
-	OBE_TAG=vid.obe.2.0.16
-	LIBKLVANC_TAG=vid.obe.1.2.1
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev-0.1
-	BUILD_X265=1
-elif [ "$1" == "vid.obe.2.0.22" ]; then
-	OBE_TAG=vid.obe.2.0.22
-	LIBKLVANC_TAG=vid.obe.1.2.2
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev-0.1
-	BUILD_X265=1
-elif [ "$1" == "vid.obe.2.0" ]; then
-	OBE_TAG=2.0.0
-	LIBKLVANC_TAG=vid.obe.1.2.2
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev-0.1
-	BUILD_X265=1
-elif [ "$1" == "vid.obe.3.0.0" ]; then
-	OBE_TAG=3.0.0
-	LIBKLVANC_TAG=vid.obe.1.2.2
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev-0.1
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-elif [ "$1" == "vid.obe.3.0.3" ]; then
-	OBE_TAG=vid.obe.3.0.3
-	LIBKLVANC_TAG=vid.obe.1.2.2
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev-0.1
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-elif [ "$1" == "vid.obe.3.1.0" ]; then
-	OBE_TAG=vid.obe.3.1.0
-	LIBKLVANC_TAG=vid.obe.1.2.2
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev-0.1
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-elif [ "$1" == "vid.obe.3.2.6" ]; then
-	OBE_TAG=vid.obe.3.2.6
-	LIBKLVANC_TAG=vid.obe.1.2.2
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev-0.1
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-elif [ "$1" == "vid.obe.3.2.7" ]; then
-	OBE_TAG=vid.obe.3.2.7
-	LIBKLVANC_TAG=vid.obe.1.2.2
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev-0.1
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-elif [ "$1" == "vid.obe.3.2.8" ]; then
-	OBE_TAG=vid.obe.3.2.8
-	LIBKLVANC_TAG=vid.obe.1.2.2
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev-0.1
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-elif [ "$1" == "vid.obe.3.2.9" ]; then
-	OBE_TAG=vid.obe.3.2.9
-	LIBKLVANC_TAG=vid.obe.1.2.2
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev-0.2
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-elif [ "$1" == "vid.obe.3.3.0" ]; then
-	OBE_TAG=vid.obe.3.3.0
-	LIBKLVANC_TAG=vid.obe.1.2.2
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev-0.1
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-elif [ "$1" == "vid.obe.3.4.0" ]; then
-	OBE_TAG=vid.obe.3.4.0
-	LIBKLVANC_TAG=vid.obe.1.2.2
-	LIBKLSCTE35_TAG=vid.obe.1.2.0
-	LIBMPEGTS_TAG=hevc-dev-0.1
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=1
-	BUILD_DEKTEC=0
-elif [ "$1" == "vid.obe.3.5.0" ]; then
-	OBE_TAG=vid.obe.3.5.0
-	LIBKLVANC_TAG=vid.obe.1.2.2
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=0
-	BUILD_DEKTEC=0
-elif [ "$1" == "vid.obe.3.6.2" ]; then
-	OBE_TAG=vid.obe.3.6.2
-	LIBKLVANC_TAG=vid.obe.1.2.2
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=0
-	BUILD_DEKTEC=0
-elif [ "$1" == "vid.obe.3.7.1" ]; then
-	OBE_TAG=vid.obe.3.7.1
-	LIBKLVANC_TAG=vid.obe.1.2.2
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=0
-	BUILD_DEKTEC=0
-elif [ "$1" == "vid.obe.3.8.0" ]; then
-	OBE_TAG=vid.obe.3.8.0
-	LIBKLVANC_TAG=vid.obe.1.3.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=0
-	BUILD_DEKTEC=0
-elif [ "$1" == "vid.obe.3.9.0" ]; then
-	OBE_TAG=vid.obe.3.9.0
-	LIBKLVANC_TAG=vid.obe.1.3.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=0
-	BUILD_DEKTEC=0
-elif [ "$1" == "vid.obe.3.10.0" ]; then
-	OBE_TAG=vid.obe.3.10.0
-	LIBKLVANC_TAG=vid.obe.1.5.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=0
-	BUILD_DEKTEC=0
-elif [ "$1" == "vid.obe.3.11.0" ]; then
-	OBE_TAG=vid.obe.3.11.0
-	LIBKLVANC_TAG=vid.obe.1.5.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=1
-	BUILD_DEKTEC=0
-elif [ "$1" == "vid.obe.3.12.1" ]; then
-	OBE_TAG=vid.obe.3.12.1
-	LIBKLVANC_TAG=vid.obe.1.5.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=1
-	BUILD_DEKTEC=0
-elif [ "$1" == "vid.obe.3.14.1" ]; then
-	OBE_TAG=vid.obe.3.14.1
-	LIBKLVANC_TAG=vid.obe.1.5.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=1
-	BUILD_DEKTEC=0
-elif [ "$1" == "vid.obe.4.0.1" ]; then
-	OBE_TAG=vid.obe.4.0.1
-	LIBKLVANC_TAG=vid.obe.1.8.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=1
-	BUILD_DEKTEC=0
-	BUILD_VEGA3311=1
-elif [ "$1" == "vid.obe.4.0.2" ]; then
-	OBE_TAG=vid.obe.4.0.2
-	LIBKLVANC_TAG=vid.obe.1.8.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=1
-	BUILD_DEKTEC=0
-	BUILD_VEGA3311=1
-elif [ "$1" == "vid.obe.4.0.3" ]; then
-	OBE_TAG=vid.obe.4.0.3
-	LIBKLVANC_TAG=vid.obe.1.10.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=1
-	BUILD_DEKTEC=0
-	BUILD_VEGA3311=1
-elif [ "$1" == "vid.obe.4.0.5" ]; then
-	OBE_TAG=vid.obe.4.0.5
-	LIBKLVANC_TAG=vid.obe.1.10.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=1
-	BUILD_DEKTEC=0
-	BUILD_VEGA3311=1
-elif [ "$1" == "vid.obe.4.1.0" ]; then
-	OBE_TAG=vid.obe.4.1.0
-	LIBKLVANC_TAG=vid.obe.1.10.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=1
-	BUILD_DEKTEC=0
-	BUILD_VEGA3311=1
-elif [ "$1" == "vid.obe.4.1.4" ]; then
-	OBE_TAG=vid.obe.4.1.4
-	LIBKLVANC_TAG=vid.obe.1.10.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=1
-	BUILD_DEKTEC=0
-	BUILD_VEGA3311=1
-elif [ "$1" == "vid.obe.4.0.0" ]; then
-	OBE_TAG=3.0.0
-	LIBKLVANC_TAG=vid.obe.1.8.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=1
-	BUILD_DEKTEC=0
-	BUILD_VEGA3311=1
-elif [ "$1" == "vid.obe.3.0-dev" ]; then
-	OBE_TAG=3.0.0
-	LIBKLVANC_TAG=vid.obe.1.5.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=1
-	BUILD_DEKTEC=0
-elif [ "$1" == "vid.obe.1.1.12" ]; then
-	OBE_TAG=vid.obe.1.1.12
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
-elif [ "$1" == "vid.obe.1.1.14" ]; then
-	OBE_TAG=vid.obe.1.1.14
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
-elif [ "$1" == "vid.obe.1.1.15" ]; then
-	OBE_TAG=vid.obe.1.1.15
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
-elif [ "$1" == "vid.obe.1.1.16" ]; then
-	OBE_TAG=vid.obe.1.1.16
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
-elif [ "$1" == "vid.obe.1.1.18" ]; then
-	OBE_TAG=vid.obe.1.1.18
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=vid.libmpegts-obe-1.1.2
-elif [ "$1" == "1.1.21" ]; then
-	OBE_TAG=1.1.21
-	LIBKLVANC_TAG=vid.obe.1.1.5
-	LIBKLSCTE35_TAG=vid.obe.1.1.2
-	LIBMPEGTS_TAG=hevc-dev-0.1
-elif [ "$1" == "vid.obe.4.2.0-dev" ]; then
-	OBE_TAG=3.0.0
-	LIBKLVANC_TAG=vid.obe.1.10.0
-	LIBKLSCTE35_TAG=vid.obe.1.3.0
-	LIBMPEGTS_TAG=hevc-dev
-	BUILD_X265=1
-	BUILD_LIBAV=0
-	BUILD_VAAPI=0
-	BUILD_LIBWEBSOCKETS=0
-	BUILD_JSONC=0
-	BUILD_LIBLTNTSTOOLS=1
-	LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-	BUILD_NDI=1
-	BUILD_DEKTEC=0
-	BUILD_VEGA3311=1
 else
 	echo "Invalid argument"
 	exit 1
 fi
-BMSDK_REPO=https://github.com/LTNGlobal-opensource/bmsdk.git
 
 if [ ! -d bmsdk ]; then
     git clone $BMSDK_REPO
 fi
-if [ `uname -s` = "Darwin" ]; then
-    PLAT=Mac
-else
-    PLAT=Linux
-fi
-BMSDK_10_11_2=$PWD/bmsdk/10.11.2/$PLAT
-BMSDK_10_8_5=$PWD/bmsdk/10.8.5/$PLAT
-BMSDK_10_1_1=$PWD/bmsdk/10.1.1/$PLAT
-BMSDK_12_9=$PWD/bmsdk/12.9/$PLAT
+
+BMSDK_10_11_2=$PWD/bmsdk/10.11.2/Linux
+BMSDK_10_8_5=$PWD/bmsdk/10.8.5/Linux
+BMSDK_10_1_1=$PWD/bmsdk/10.1.1/Linux
+BMSDK_12_9=$PWD/bmsdk/12.9/Linux
 
 if [ $BUILD_LIBLTNTSTOOLS -eq 1 ]; then
 	if [ ! -d libltntstools ]; then
@@ -592,13 +93,6 @@ if [ $BUILD_JSONC -eq 1 ]; then
 	if [ ! -d json-c ]; then
 		git clone https://github.com/json-c/json-c.git
 		cd json-c && git checkout $JSONC_TAG && cd ..
-	fi
-fi
-
-if [ $BUILD_LIBWEBSOCKETS -eq 1 ]; then
-	if [ ! -d libwebsockets ]; then
-		git clone https://libwebsockets.org/repo/libwebsockets
-		cd libwebsockets && git checkout $LIBWEBSOCKETS_TAG && cd ..
 	fi
 fi
 
@@ -669,35 +163,16 @@ if [ ! -d libklscte35 ]; then
 fi
 
 if [ ! -d obe-rt ]; then
-	git clone https://github.com/LTNGlobal-opensource/obe-rt.git
-	if [ "$OBE_TAG" != "" ]; then
-		cd obe-rt && git checkout $OBE_TAG && cd ..
-	fi
+	git clone https://github.com/OTT-Broadcast-Encoder/obe-rt.git
 fi
 
-if [ "$X264_TIP" -eq 1 ]; then
-	if [ ! -d x264 ]; then
-		git clone https://code.videolan.org/videolan/x264.git
-	fi
-else
-	if [ ! -d x264-obe ]; then
-		git clone https://github.com/LTNGlobal-opensource/x264-obe.git
-	fi
+if [ ! -d x264-obe ]; then
+	git clone https://github.com/LTNGlobal-opensource/x264-obe.git
 fi
 
-if [ ! -d fdk-aac ]; then
-	git clone https://github.com/LTNGlobal-opensource/fdk-aac.git
-fi
-
-if [ $BUILD_LIBAV -eq 1 ]; then
-	if [ ! -d libav-obe ]; then
-		git clone https://github.com/LTNGlobal-opensource/libav-obe.git
-	fi
-else
-	if [ ! -d ffmpeg ]; then
-		git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg
-		cd ffmpeg && git checkout $FFMPEG_TAG && cd ..
-	fi
+if [ ! -d ffmpeg ]; then
+	git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg
+	cd ffmpeg && git checkout $FFMPEG_TAG && cd ..
 fi
 
 if [ ! -d libmpegts-obe ]; then
@@ -789,20 +264,6 @@ if [ $BUILD_JSONC -eq 1 ]; then
 	popd
 fi
 
-if [ $BUILD_LIBWEBSOCKETS -eq 1 ]; then
-	pushd libwebsockets
-		if [ ! -f .skip ]; then
-			mkdir -p build
-			cd build
-			cmake -DCMAKE_INSTALL_PREFIX:PATH=$PWD/../../target-root/usr/local ..
-			make -j$JOBS
-			make install
-			cd ..
-			touch .skip
-		fi
-	popd
-fi
-
 if [ $BUILD_X265 -eq 1 ]; then
 	pushd x265/build/linux
 		if [ ! -f .skip ]; then
@@ -811,6 +272,7 @@ if [ $BUILD_X265 -eq 1 ]; then
 			cmake -DCMAKE_INSTALL_PREFIX=$PWD/../../../target-root/usr/local \
 				-G "Unix Makefiles" \
 				-DENABLE_SHARED:bool=off \
+				-DENABLE_LIBNUMA:bool=off \
 				../../source
 			make -j$JOBS
 			make install
@@ -866,78 +328,41 @@ pushd twolame-0.3.13
 	fi
 popd
 
-if [ "$X264_TIP" -eq 1 ]; then
-	pushd x264
-		if [ ! -f .skip ]; then
-			make clean
-			./configure --enable-static --prefix=$PWD/../target-root/usr/local --disable-lavf --disable-swscale --disable-opencl --bit-depth=$X264_BITDEPTH
-			make -j$JOBS && make install
-			touch .skip
-		fi
-	popd
-else
-	pushd x264-obe
-		if [ ! -f .skip ]; then
-			make clean
-			./configure --enable-static --disable-cli --prefix=$PWD/../target-root/usr/local --disable-lavf --disable-swscale --disable-opencl --bit-depth=$X264_BITDEPTH
-			make -j$JOBS && make install
-			touch .skip
-		fi
-	popd
-fi
-
-pushd fdk-aac
+pushd x264-obe
 	if [ ! -f .skip ]; then
-		./autogen.sh
-		./configure --prefix=$PWD/../target-root/usr/local --enable-shared=no
-		make && make install
+		make clean
+		./configure --enable-static --disable-cli --prefix=$PWD/../target-root/usr/local --disable-lavf --disable-swscale --disable-opencl --bit-depth=$X264_BITDEPTH
+		make -j$JOBS && make install
 		touch .skip
 	fi
 popd
 
-if [ $BUILD_LIBAV -eq 1 ]; then
-	pushd libav-obe
-		if [ ! -f .skip ]; then
-			./configure --prefix=$PWD/../target-root/usr/local --enable-libfdk-aac --enable-gpl --enable-nonfree \
-				--disable-swscale-alpha --disable-avdevice \
-				--extra-ldflags="-L$PWD/../target-root/usr/local/lib" \
-				--extra-cflags="-I$PWD/../target-root/usr/local/include -ldl"
-			make -j$JOBS && make install
-			touch .skip
-		fi
-	popd
-else
-	pushd ffmpeg
-	if [ ! -f .skip ]; then
-		export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_10_11_2/include"
-		export LDFLAGS="-L$PWD/../target-root/usr/local/lib -lpthread -ldl"
-		export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig:/usr/local/lib/pkgconfig
-		./configure --prefix=$PWD/../target-root/usr/local \
-			--enable-gpl \
-			--enable-nonfree \
-			--enable-decklink \
-			--enable-libfdk-aac \
-			--disable-swscale-alpha \
-			--enable-libfdk-aac \
-			--enable-libx264 \
-			--pkg-config-flags="--static" \
-			--enable-libx265 \
-			--enable-gpl \
-			--enable-nonfree
+pushd ffmpeg
+if [ ! -f .skip ]; then
+	export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_10_11_2/include"
+	export LDFLAGS="-L$PWD/../target-root/usr/local/lib -lpthread -ldl"
+	export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig:/usr/local/lib/pkgconfig
+	./configure --prefix=$PWD/../target-root/usr/local \
+		--enable-gpl \
+		--enable-nonfree \
+		--enable-decklink \
+		--disable-swscale-alpha \
+		--pkg-config-flags="--static" \
+		--enable-gpl \
+		--enable-nonfree
 
 # For NVENC and Cuda
 #			--enable-cuda-nvcc --enable-cuvid --enable-nvenc \
 #			--extra-cflags="-I/usr/local/cuda/include/" \
 #			--extra-ldflags=-L/usr/local/cuda/lib64/
 
-		make -j$JOBS && make install
-		unset CFLAGS
-		unset LDFLAGS
-		unset PKG_CONFIG_PATH
-		touch .skip
-	fi
-	popd
+	make -j$JOBS && make install
+	unset CFLAGS
+	unset LDFLAGS
+	unset PKG_CONFIG_PATH
+	touch .skip
 fi
+popd
 
 pushd libyuv
 	if [ ! -f .skip ]; then
@@ -949,28 +374,14 @@ pushd libyuv
 popd
 
 build_obe() {
-    GITVER=`echo $1 | sed 's/^vid.obe.//'`
-    BMSDK_DIR=$2
+    BMSDK_DIR=$1
     BMVERSION=`cat $BMSDK_DIR/include/DeckLinkAPIVersion.h | grep BLACKMAGIC_DECKLINK_API_VERSION_STRING | awk '{print $3}'|sed -e 's/^"//' -e 's/"$//'`
 
-    echo "Building OBE $GITVER for BlackMagic SDK version $BMVERSION"
+    echo "Building OBE for BlackMagic SDK version $BMVERSION"
 
-    if [ "$1" == "customerd" ]; then
 	pushd obe-rt
-	export CXXFLAGS="-I$PWD/../target-root/usr/local/include -ldl"
-	export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
-	./configure \
-		--extra-ldflags="-L$PWD/../target-root/usr/local/lib -lfdk-aac -lavutil -lasound -lyuv -lklvanc" \
-		--extra-cflags="-I$PWD/../target-root/usr/local/include -ldl" \
-		--extra-cxxflags="-I$BMSDK_DIR"
-	make clean
-	make
-	DESTDIR=$PWD/../target-root make install
-	popd
-    else
-	pushd obe-rt
-	export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_DIR"
-	export LDFLAGS="-L$PWD/../target-root/usr/local/lib"
+	export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_DIR -no-pie"
+	export LDFLAGS="-L$PWD/../target-root/usr/local/lib -no-pie"
 	export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
 	if [ $BUILD_NDI -eq 1 ]; then
 		export CFLAGS="$CFLAGS -I$NDI_SDK/include"
@@ -1001,10 +412,7 @@ build_obe() {
 	make -j$JOBS
 	make install
 	popd
-	cp target-root/usr/local/bin/obecli obecli-$GITVER-bm$BMVERSION
-    fi
+	cp target-root/usr/local/bin/obecli obecli
 }
 
-#build_obe $OBE_TAG $BMSDK_10_1_1
-build_obe $OBE_TAG $BMSDK_10_8_5
-#build_obe $OBE_TAG $BMSDK_12_9
+build_obe $BMSDK_10_8_5
