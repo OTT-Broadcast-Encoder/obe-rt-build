@@ -2,6 +2,7 @@
 
 JOBS=8
 
+BMDSDK_VER=10.8.5
 FFMPEG_TAG=n4.2.1
 LIBYUV_TAG=cbe5385055b9360cacd14877450631b87eea1fcd
 LIBZVBI_TAG=e62d905e00cdd1d6d4333ead90fb5b44bfb49371
@@ -29,7 +30,6 @@ DEKTEC_DRV=$PWD/dektecsdk/2019.11.0/Drivers/DtPcie/Source/Linux
 DEKTEC_SDK=$PWD/dektecsdk/2019.11.0/DTAPI
 DEKTEC_SDK_INC=$PWD/dektecsdk/2019.11.0/DTAPI/Include
 
-BMSDK_REPO=https://github.com/LTNGlobal-opensource/bmsdk.git
 
 if [ "$1" == "" ]; then
 	echo "Building..."
@@ -73,14 +73,10 @@ else
 	exit 1
 fi
 
-if [ ! -d bmsdk ]; then
-    git clone $BMSDK_REPO
+if [ ! -d blackmagic-sdk ]; then
+    git clone https://github.com/OTT-Broadcast-Encoder/blackmagic-sdk.git
 fi
 
-BMSDK_10_11_2=$PWD/bmsdk/10.11.2/Linux
-BMSDK_10_8_5=$PWD/bmsdk/10.8.5/Linux
-BMSDK_10_1_1=$PWD/bmsdk/10.1.1/Linux
-BMSDK_12_9=$PWD/bmsdk/12.9/Linux
 
 if [ $BUILD_LIBLTNTSTOOLS -eq 1 ]; then
 	if [ ! -d libltntstools ]; then
@@ -339,7 +335,7 @@ popd
 
 pushd ffmpeg
 if [ ! -f .skip ]; then
-	export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_10_11_2/include"
+	export CFLAGS="-I$PWD/../target-root/usr/local/include -I$PWD/../blackmagic-sdk/10.11.2/Linux/include"
 	export LDFLAGS="-L$PWD/../target-root/usr/local/lib -lpthread -ldl"
 	export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig:/usr/local/lib/pkgconfig
 	./configure --prefix=$PWD/../target-root/usr/local \
@@ -374,10 +370,11 @@ pushd libyuv
 popd
 
 build_obe() {
-    BMSDK_DIR=$1
-    BMVERSION=`cat $BMSDK_DIR/include/DeckLinkAPIVersion.h | grep BLACKMAGIC_DECKLINK_API_VERSION_STRING | awk '{print $3}'|sed -e 's/^"//' -e 's/"$//'`
+    BMSDK_DIR=$PWD/blackmagic-sdk/$BMDSDK_VER/Linux
 
-    echo "Building OBE for BlackMagic SDK version $BMVERSION"
+	echo $BMDSDK_VER
+
+    echo "Building OBE for BlackMagic SDK version $BMDSDK_VER"
 
 	pushd obe-rt
 	export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_DIR -no-pie"
@@ -415,4 +412,4 @@ build_obe() {
 	cp target-root/usr/local/bin/obecli obecli
 }
 
-build_obe $BMSDK_10_8_5
+build_obe
