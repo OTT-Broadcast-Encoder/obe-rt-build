@@ -39,7 +39,7 @@ elif [ "$1" == "clean" ]; then
 	rm -rf 	libyuv
 	rm -rf 	obe-rt
 	rm -rf 	target-root
-	rm -rf 	twolame-0.3.13
+	rm -rf 	twolame
 	rm -rf 	x264-obe
 	rm -rf 	obe-bitstream
 	rm -rf 	libklvanc
@@ -185,8 +185,8 @@ if [ ! -d libyuv ]; then
 	popd
 fi
 
-if [ ! -d twolame-0.3.13 ]; then
-	tar zxf twolame-0.3.13.tar.gz
+if [ ! -d twolame ]; then
+	git clone https://github.com/OTT-Broadcast-Encoder/twolame.git
 fi
 
 if [ $BUILD_LIBLTNTSTOOLS -eq 1 ]; then
@@ -278,7 +278,7 @@ pushd libmpegts-obe
 	fi
 popd
 
-pushd twolame-0.3.13
+pushd twolame
 	if [ ! -f .skip ]; then
 		./configure --prefix=$PWD/../target-root/usr/local --enable-shared=no
 		make && make install
