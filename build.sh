@@ -62,6 +62,7 @@ elif [ "$1" == "installdeps" ]; then
 	sudo apt-get install gobjc++ -y
 	sudo apt-get install cmake -y
 	sudo apt-get install yasm -y
+	sudo apt-get install nasm -y
 	sudo apt-get install autoconf -y
 	sudo apt-get install libtool -y
 	sudo apt-get install autotools-dev -y
