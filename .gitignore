@@ -9,8 +9,8 @@ libyuv/
 obe-bitstream/
 obe-rt/
 target-root/
-x264-obe/
 twolame/
+x264/
 NDI/
 vaapi/libdrm-*/
 vaapi/intel-*/

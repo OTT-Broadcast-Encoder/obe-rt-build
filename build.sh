@@ -40,7 +40,7 @@ elif [ "$1" == "clean" ]; then
 	rm -rf 	obe-rt
 	rm -rf 	target-root
 	rm -rf 	twolame
-	rm -rf 	x264-obe
+	rm -rf 	x264
 	rm -rf 	obe-bitstream
 	rm -rf 	libklvanc
 	rm -rf 	libklscte35
@@ -161,10 +161,12 @@ fi
 
 if [ ! -d obe-rt ]; then
 	git clone https://github.com/OTT-Broadcast-Encoder/obe-rt.git
+else
+	pushd obe-rt && git pull && popd
 fi
 
-if [ ! -d x264-obe ]; then
-	git clone https://github.com/LTNGlobal-opensource/x264-obe.git
+if [ ! -d x264 ]; then
+	git clone https://github.com/OTT-Broadcast-Encoder/x264.git
 fi
 
 if [ ! -d ffmpeg ]; then
@@ -289,7 +291,7 @@ pushd twolame
 	fi
 popd
 
-pushd x264-obe
+pushd x264
 	if [ ! -f .skip ]; then
 		make clean
 		./configure --enable-static --disable-cli --prefix=$PWD/../target-root/usr/local --disable-lavf --disable-swscale --disable-opencl --bit-depth=$X264_BITDEPTH
