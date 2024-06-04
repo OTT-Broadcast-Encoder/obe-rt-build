@@ -154,12 +154,14 @@ fi
 
 if [ ! -d obe-rt ]; then
 	git clone https://github.com/OTT-Broadcast-Encoder/obe-rt.git
+	git config pull.rebase true
 else
 	pushd obe-rt && git pull && popd
 fi
 
 if [ ! -d x264 ]; then
 	git clone https://github.com/OTT-Broadcast-Encoder/x264.git
+	git config pull.rebase true
 else
 	pushd x264 && git pull && popd
 fi
