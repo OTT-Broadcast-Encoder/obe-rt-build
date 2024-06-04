@@ -98,7 +98,7 @@ if [ ! -d libltntstools ]; then
 	popd
 fi
 
-if [ ! -d NDI]; then
+if [ ! -d NDI ]; then
 	mkdir -p NDI
 	pushd NDI
 		if [ ! -f InstallNDISDK_v4_Linux.tar.gz ]; then
