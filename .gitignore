@@ -21,3 +21,4 @@ json-c/
 libwebsockets/
 libzvbi/
 obecli
+.vscode/sftp.json
