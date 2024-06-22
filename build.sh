@@ -40,8 +40,8 @@ elif [ "$1" == "clean" ]; then
 	rm -rf x265
 	rm -rf libwebsockets
 	rm -rf libltntstools
+	rm -rf zimg vapoursynth
 	rm -f  tarball.tgz
-	rm -f  zimg vapoursynth
 
 	exit 0
 elif [ "$1" == "installdeps" ]; then
