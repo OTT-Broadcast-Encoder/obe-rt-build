@@ -22,61 +22,60 @@ elif [ "$1" == "clean" ]; then
 		./clean.sh
 	popd
 
-	rm -rf 	decklink-sdk
-	rm -rf 	fdk-aac
-	rm -rf 	libav-obe ffmpeg
-	rm -rf 	libmpegts-obe
-	rm -rf 	libyuv
-	rm -rf 	obe-rt
-	rm -rf 	target-root
-	rm -rf 	twolame
-	rm -rf 	x264
-	rm -rf 	obe-bitstream
-	rm -rf 	libklvanc
-	rm -rf 	libklscte35
-	rm -rf 	blackmagic-sdk
-	rm -rf  obecli
-	rm -rf  libzvbi
-	rm -rf  x265
-	rm -rf  libwebsockets
-	rm -rf  libltntstools
-	rm -f   tarball.tgz
+	rm -rf decklink-sdk
+	rm -rf fdk-aac
+	rm -rf libav-obe ffmpeg
+	rm -rf libmpegts-obe
+	rm -rf libyuv
+	rm -rf obe-rt
+	rm -rf target-root
+	rm -rf twolame
+	rm -rf x264
+	rm -rf obe-bitstream
+	rm -rf libklvanc
+	rm -rf libklscte35
+	rm -rf blackmagic-sdk
+	rm -rf obecli
+	rm -rf libzvbi
+	rm -rf x265
+	rm -rf libwebsockets
+	rm -rf libltntstools
+	rm -f  tarball.tgz
 
 	exit 0
 elif [ "$1" == "installdeps" ]; then
-	sudo apt-get install git -y
-	sudo apt-get install unzip -y
-	sudo apt-get install build-essential -y
-	sudo apt-get install gobjc -y
-	sudo apt-get install gobjc++ -y
-	sudo apt-get install cmake -y
-	sudo apt-get install yasm -y
-	sudo apt-get install nasm -y
-	sudo apt-get install autoconf -y
-	sudo apt-get install libtool -y
-	sudo apt-get install autotools-dev -y
-	sudo apt-get install automake -y
-	sudo apt-get install libreadline-dev -y
-	sudo apt-get install libvdpau-dev -y
-	sudo apt-get install libva-dev -y
-	sudo apt-get install libx11-dev -y
-	sudo apt-get install libzvbi0 -y
-	sudo apt-get install libzvbi-dev -y
-	sudo apt-get install libzvbi-common -y
-	sudo apt-get install libasound2-dev -y
-	sudo apt-get install libbz2-dev -y
-	sudo apt-get install liblzma-dev -y
-	sudo apt-get install libfdk-aac-dev -y
-	sudo apt-get install meson -y
-	sudo apt-get install pkg-config -y
-	sudo apt-get install libdrm-dev -y
-	sudo apt-get install libkmod-dev -y
-	sudo apt-get install libprocps-dev -y
-	sudo apt-get install libdw-dev -y
-	sudo apt-get install libpixman-1-dev -y
-	sudo apt-get install libcairo-dev -y
-	sudo apt-get install flex -y
-	sudo apt-get install bison -y
+	sudo apt-get install -y git \
+	                        unzip \
+	                        build-essential \
+	                        gobjc \
+	                        gobjc++ \
+	                        cmake \
+	                        yasm \
+	                        nasm \
+	                        autoconf \
+	                        libtool \
+	                        autotools-dev \
+	                        automake \
+	                        libreadline-dev \
+	                        libvdpau-dev \
+	                        libva-dev \
+	                        libx11-dev \
+	                        libzvbi0 \
+	                        libzvbi-dev \
+	                        libzvbi-common \
+	                        libasound2-dev \
+	                        libbz2-dev \
+	                        liblzma-dev \
+	                        libfdk-aac-dev \
+	                        meson \
+	                        pkg-config \
+	                        libdrm-dev \
+	                        libkmod-dev \
+	                        libdw-dev \
+	                        libpixman-1-dev \
+	                        libcairo-dev \
+	                        flex \
+	                        bison
 
 	exit 0
 else
