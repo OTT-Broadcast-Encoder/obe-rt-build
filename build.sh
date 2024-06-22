@@ -41,6 +41,7 @@ elif [ "$1" == "clean" ]; then
 	rm -rf libwebsockets
 	rm -rf libltntstools
 	rm -f  tarball.tgz
+	rm -f  zimg vapoursynth
 
 	exit 0
 elif [ "$1" == "installdeps" ]; then
@@ -76,6 +77,8 @@ elif [ "$1" == "installdeps" ]; then
 	                        libcairo-dev \
 	                        flex \
 	                        bison
+
+	pip3 install -U --break-system-packages cython setuptools wheel
 
 	exit 0
 else
@@ -150,6 +153,21 @@ if [ ! -d libklscte35 ]; then
 		git checkout $LIBKLSCTE35_TAG
 	popd
 fi
+
+if [ ! -d zimg ]; then
+	git clone https://bitbucket.org/the-sekrit-twc/zimg.git --depth 1 --recurse-submodules --shallow-submodules
+	pushd zimg && git config pull.rebase true && popd
+else
+	pushd zimg && git pull && popd
+fi
+
+if [ ! -d vapoursynth ]; then
+	git clone https://github.com/vapoursynth/vapoursynth.git --depth 1 --recurse-submodules --shallow-submodules
+	pushd vapoursynth && git config pull.rebase true && popd
+else
+	pushd vapoursynth && git pull && popd
+fi
+
 
 if [ ! -d obe-rt ]; then
 	git clone https://github.com/OTT-Broadcast-Encoder/obe-rt.git
@@ -315,6 +333,40 @@ pushd libyuv
 		make -f linux.mk
 		cp -r include/* $PWD/../target-root/usr/local/include
 		cp libyuv.a $PWD/../target-root/usr/local/lib
+		touch .skip
+	fi
+popd
+
+pushd zimg
+	if [ ! -f .skip ]; then
+		./autogen.sh
+		./configure --prefix=$PWD/../target-root/usr/local
+		make clean
+		make -j$JOBS
+		make install
+		touch .skip
+	fi
+popd
+
+pushd vapoursynth
+	if [ ! -f .skip ]; then
+		export CFLAGS="-I$PWD/../target-root/usr/local/include -DVS_USE_LATEST_API"
+		export LDFLAGS="-L$PWD/../target-root/usr/local/lib"
+		export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig:/usr/local/lib/pkgconfig
+		./autogen.sh
+		./configure --prefix=$PWD/../target-root/usr/local
+		make clean
+		make -j$JOBS
+		make install
+		python3 setup.py sdist -d sdist
+        mkdir -p empty
+		pushd empty
+        	pip3 install --break-system-packages vapoursynth --no-index --find-links ../sdist
+        popd
+		unset CFLAGS
+		unset LDFLAGS
+		unset PKG_CONFIG_PATH
+		unset PYTHON_VERSION
 		touch .skip
 	fi
 popd

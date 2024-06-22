@@ -22,3 +22,5 @@ libwebsockets/
 libzvbi/
 obecli
 .vscode/sftp.json
+zimg/
+vapoursynth/
