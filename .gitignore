@@ -24,3 +24,4 @@ obecli
 .vscode/sftp.json
 zimg/
 vapoursynth/
+vs-plugins/vapoursynth-*
