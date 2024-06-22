@@ -227,7 +227,6 @@ pushd libzvbi
 		./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local
 		make -j$JOBS
 		make install
-		make install
 		touch .skip
 	fi
 popd
@@ -237,7 +236,6 @@ pushd libklvanc
 		./autogen.sh --build
 		./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local --enable-dep-curses=no
 		make -j$JOBS
-		make install
 		make install
 		touch .skip
 	fi
@@ -259,7 +257,6 @@ pushd libmpegts-obe
 	if [ ! -f .skip ]; then
 		./configure --prefix=$PWD/../target-root/usr/local
 		make -j$JOBS
-		make install
 		make install
 		touch .skip
 	fi
