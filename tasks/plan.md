@@ -1,6 +1,6 @@
 # Roadmap feature — qualità di codifica e passaggio a 1080i
 
-Data: 21 ottobre 2026. Priorità aggiornata dalle indicazioni dell'utente: testing, migliore qualità a parità di bitrate, migliore compressione a qualità confrontabile, passaggio da PAL a 1080i e ingresso di rete per lavorare senza SDI. Il primo incremento dell'ingresso URL è implementato; T04/T05 sono parziali e il primo collaudo locale UDP/RTP è superato. Le altre attività restano pianificate.
+Data: 21 ottobre 2026. Priorità aggiornata dalle indicazioni dell'utente: testing, migliore qualità a parità di bitrate, migliore compressione a qualità confrontabile, passaggio da PAL a 1080i e ingresso di rete per lavorare senza SDI. L'ingresso URL UDP/RTP e SRT cifrato funziona in laboratorio; il percorso 1080i50 nativo supera il collaudo TFF/BFF. T04/T05/T06/T07 restano parziali per matrice completa, conversioni e durata. La prova Internet SRT attende l'inoltro UDP sul gateway; sono disponibili misure preliminari SSH/TCP.
 
 ## Obiettivo della prima versione
 
@@ -16,9 +16,9 @@ Il primo target proposto è **1080i50: 1920×1080, 25 fotogrammi e 50 semiquadri
 | Profilo attuale | I rilievi del pannello della redazione riportano PAL, AVC 1.020 kb/s, MP2 128 kb/s e mux CBR 1.300 kb/s. Sono valori osservati nella configurazione, da verificare sul bitstream. |
 | Interlacciamento attuale | Nel report le caselle Interlaced/TFF non sono selezionate. La modalità di acquisizione PAL non prova la scansione effettiva dell'uscita: va misurata prima di replicare o correggere il profilo. |
 | Sorgenti disponibili | L'utente indica disponibilità di PAL, 1080i50, 1080p50 e uscite SDI, NDI, MPEG-TS. La presenza di un'uscita SRT nativa va verificata; è possibile prevedere un gateway lato playout. |
-| Rete | Uno4: 1 Gbit/s simmetrico. Sviluppo: 2,5 Gbit/s download, 1 Gbit/s upload. Sono accessi Internet, non un collegamento Ethernet diretto. Da Uno4 allo sviluppo il limite nominale è l'upload a 1 Gbit/s; capacità utile, RTT, jitter e perdite restano da misurare. |
-| Ingresso generico | `lavf_input` è collegato a probe e avvio: primo percorso URL → decode → encoder/mux OBE con selezione automatica di un video e audio opzionale stereo 48 kHz. Collaudo locale superato: PAL UDP/RTP, 1080i50 UDP e AVC con B-frame/AAC UDP; vedere la [guida](../docs/input-url.md). SRT e il percorso Internet restano da implementare/collaudare. |
-| Librerie disponibili | FFmpeg ha demux/decoder e protocolli UDP/RTP, RTSP e HTTP; libSRT è disabilitata. PSNR/SSIM sono disponibili, libvmaf è disabilitata. |
+| Rete | Uno4: 1 Gbit/s simmetrico. Sviluppo: 2,5 Gbit/s download, 1 Gbit/s upload; accessi Internet. Misurati RTT medio 30,039 ms e 18,16 Mbit/s di payload SSH/TCP con offerta limitata a 20 Mbit/s. Non è una misura di capacità massima; jitter e perdita UDP/SRT restano aperti per NAT. [Metodo e risultati](../docs/contribution-link.md). |
+| Ingresso generico | `lavf_input` collega URL → decode → encoder/mux OBE con un video e audio opzionale stereo 48 kHz. Collaudo locale UDP/RTP e SRT caller/listener cifrati superato, compresi riavvio mittente, reset PTS e chiave errata; vedere la [guida](../docs/input-url.md). Il percorso Internet SRT resta da collaudare. |
+| Librerie disponibili | FFmpeg include libSRT 1.5.7 con OpenSSL e protocolli UDP/RTP, RTSP e HTTP. PSNR/SSIM disponibili, libvmaf disabilitata. |
 | Controlli encoder | OBE espone preset, bitrate, VBV, GOP, lookahead, interlacciamento e TFF; il fork x264 include speedcontrol. Il benchmark deve registrare i parametri effettivi dopo gli adattamenti di OBE. |
 
 Il report indica un i5-8500 a sei CPU nel server della redazione: va confermato come macchina obiettivo. Una configurazione che funziona sulla macchina di sviluppo deve essere misurata anche sulla destinazione.
@@ -34,7 +34,7 @@ Il report indica un i5-8500 a sei CPU nel server della redazione: va confermato 
 | M4 — Pilota HD | P1 | Prova prolungata sul server obiettivo e verifica della consegna | Prima prova di 24 ore entro le soglie concordate, compatibilità dei ricevitori e ripristino del profilo PAL verificati |
 | Successivo — Gestione e ampliamenti | P2 | Dashboard/API, allarmi, ridondanza, multicanale, GPU/UHD e altri trasporti | Attività da dettagliare dopo il risultato dell'encoding, per esigenza concreta |
 
-Ordine di consegna: M0 → M1 → M2 → M3 → M4. Preparazione del corpus e strumenti di misura possono procedere durante M1; la scelta del preset finale richiede la validazione di M2. Il primo incremento T04/T05 funziona su URL UDP/RTP locale usando le librerie già presenti; T03 abilita SRT e T06 completa il percorso Internet. La lettura diretta da file non è un prerequisito.
+Ordine di consegna: M0 → M1 → M2 → M3 → M4. Preparazione del corpus e strumenti di misura possono procedere durante M1; la scelta del preset finale richiede la validazione di M2. T03 è completato; T06 funziona in laboratorio e attende il collaudo Internet. T07 verifica 300 campi consecutivi per TFF/BFF, crominanza, BT.709 e scarto A/V massimo 10,69 ms sul nativo 1080i50; [risultati e limiti](../docs/1080i-validation.md). Restano le conversioni da PAL/1080p50. La lettura diretta da file non è un prerequisito.
 
 ## Ingresso di test e uso della rete
 

@@ -1,6 +1,6 @@
 # Attività — banco di prova encoding e input IP
 
-Riferimento: [roadmap](plan.md). T04/T05 sono parziali: primo ingresso URL implementato e collaudo locale superato; le altre attività restano da fare. Priorità confermata: qualità/compressione, 1080i e ingresso URL per test senza SDI. I file sono riferimenti per le misure; il lettore file diretto è opzionale. Non sono state aperte issue da questo documento.
+Riferimento: [roadmap](plan.md). T03 completato; T04/T05/T06 parziali con URL e SRT cifrato collaudati localmente. T07 supera il nativo 1080i50 TFF/BFF; conversioni e durata restano aperte. T02 dispone di misure SSH/TCP, mentre UDP/SRT Internet attende l'inoltro sul gateway. Priorità confermata: qualità/compressione, 1080i e ingresso URL per test senza SDI. I file sono riferimenti per le misure; il lettore file diretto è opzionale. Non sono state aperte issue da questo documento.
 
 Primo incremento: T04 → T05 su URL UDP/RTP locale, usando le dipendenze già disponibili. T03 abilita SRT, necessario insieme a T05 per T06. I campioni sintetici consentono di iniziare senza attendere il collegamento al playout; T01 e T02 completano i riferimenti e le condizioni reali.
 
@@ -18,6 +18,7 @@ Raccogliere il profilo PAL effettivo e sorgenti native PAL, 1080i50 e 1080p50, c
 ## T02 — Misurare la contribuzione Internet [M0]
 
 Determinare capacità utile e condizioni del percorso Uno4 → sviluppo, poi scegliere il primo codec/bitrate di contribuzione e il verso caller/listener.
+- [x] Rilievo preliminare: RTT medio 30,039 ms; payload SSH/TCP 18,16 Mbit/s su prova limitata a 20 Mbit/s; multicast PAL ricevuto a 1,3018 Mbit/s. Metodo e limiti in [contribution-link.md](../docs/contribution-link.md).
 - [ ] Rilevati capacità utile con margine, RTT, jitter, perdite e raggiungibilità; prova concordata senza saturare il servizio in onda.
 - [ ] Sorgente SRT nativa o gateway identificati; bitrate e latenza scelti distinguendo overhead e ritrasmissioni; riferimento prima della contribuzione disponibile per stimarne il danno.
 - Verifica: confronto fra file sorgente e contribuzione ricevuta, con statistiche di rete e carico del mittente/ricevitore.
@@ -29,12 +30,12 @@ Determinare capacità utile e condizioni del percorso Uno4 → sviluppo, poi sce
 
 ## T03 — Abilitare SRT nella build isolata [M1]
 
-Fissare la dipendenza SRT e collegarla alla build FFmpeg usata da OBE.
-- [ ] Versione e opzioni riproducibili; protocollo SRT disponibile nell'ambiente isolato e smoke test preesistenti ancora validi.
-- [ ] Prova locale cifrata fra due endpoint con errore riconoscibile per credenziale errata, senza esporla nei log.
-- Verifica: elenco protocolli della build e trasferimento di un campione in laboratorio; questa prova verifica il trasporto, non ancora l'ingresso OBE.
-- Dipendenze: base build attuale; nuove dipendenze da confermare prima dell'installazione. Dimensione: M.
-- File probabili, obe-rt-build: `build.sh`, `docker/obe-builder/Dockerfile.current`, `sources-manifest.txt`, `LIBRARIES.md`, `tests/smoke-srt.sh`.
+Stato: **completato**. SRT 1.5.7 fissata a commit, collegata a FFmpeg/OBE con OpenSSL nell'immagine isolata.
+- [x] Versione e opzioni riproducibili; protocollo SRT disponibile nell'ambiente isolato e smoke test preesistenti ancora validi.
+- [x] Prova locale cifrata fra due endpoint con errore riconoscibile per credenziale errata, senza esporla nei log.
+- Verifica: `tests/input-srt.py`, caller/listener cifrati attraverso OBE e chiave errata dopo controllo positivo; `tests/smoke-current.sh`, unit test ASan/UBSan e redazione del segreto negli errori FFmpeg.
+- Dipendenze: libssl-dev installata soltanto nell'immagine Docker autorizzata. Dimensione: M.
+- File: `build.sh`, `docker/obe-builder/Dockerfile.current`, `sources-manifest.txt`, `tests/input-srt.py`, [guida SRT](../docs/input-srt.md).
 
 ## T04 — Implementare probe e decode video da URL [M1]
 
@@ -62,6 +63,7 @@ Stato: **parziale**. Modulo registrato in probe e avvio, audio opzionale stereo 
 ## T06 — Ricevere SRT con risorse limitate [M1]
 
 Portare il lettore URL già collaudato su SRT, poi sul collegamento Internet, e misurare il costo di ingresso nella pipeline.
+- [x] Caller/listener cifrati: riavvio mittente e PTS azzerati recuperati; timestamp A/V continui; `quit` senza sorgente in 0,03 s. Chiave errata respinta in 3,02 s dopo controllo positivo.
 - [ ] Timeout interrompibili, arresto rapido, code limitate e gestione dichiarata di perdita, riconnessione e cambio formato.
 - [ ] Misure distinte di decode, conversioni, copie, CPU e memoria; una sola conversione verso il formato richiesto quando possibile e ownership dei buffer verificata.
 - Verifica: stream noto in laboratorio, perdita/ritardo, sorgente ferma, formato inatteso e ripartenza; poi campione live con il profilo di T02. Nessuna crescita indefinita della memoria.
@@ -70,15 +72,15 @@ Portare il lettore URL già collaudato su SRT, poi sul collegamento Internet, e 
 
 ## T07 — Verificare il percorso 1080i50 [M2]
 
-Provare HD interlacciato nativo e distinguere le conversioni da 1080p50 e da PAL.
-- [ ] Ordine dei campi, cadenza, sottocampionamento della crominanza, colorimetria e aspect ratio corretti su pattern con movimento; output controllato dopo la decodifica.
+Stato: **parziale**. HD interlacciato nativo collaudato; conversioni da 1080p50 e PAL ancora aperte.
+- [x] Ordine TFF/BFF, 300 campi consecutivi a 50 Hz per caso, conversione 4:2:2→4:2:0, BT.709/range limitato e SAR 1:1 verificati dopo decode. Scarto A/V massimo 10,69 ms, soglia 20 ms; controlli negativi superati.
 - [ ] Conversioni esplicite e identiche fra prove; risultati HD nativi separati dall'upscaling PAL e sincronismo audio/video preservato.
 - Verifica: conteggio dei campi/istanti temporali e controllo visivo di ticker, diagonali e movimento; il flag interlaced da solo non soddisfa la verifica.
 - Dipendenze: T05 e corpus di T01; T06 per ripetere i casi live. Dimensione: M.
-- File probabili, obe-rt-build: `tests/encoding/interlace.sh`, `tests/encoding/formats.json`, `docs/1080i-validation.md`; eventuali difetti in obe-rt diventano patch mirate separate.
+- File: `tests/input-1080i.py`, [metodo e risultati](../docs/1080i-validation.md). Nessun difetto video riprodotto, nessuna patch video necessaria.
 
 ### Checkpoint input e formato
-- [ ] Gli ingressi URL locale e SRT funzionano senza SDI e il formato 1080i è corretto prima di valutare i preset sulla qualità.
+- [x] In laboratorio, ingressi URL UDP/RTP e SRT senza SDI; formato nativo 1080i50 corretto prima di valutare i preset sulla qualità. Restano il percorso Internet SRT, conversioni e prova prolungata.
 
 ## T08 — Automatizzare le misure di qualità [M3]
 

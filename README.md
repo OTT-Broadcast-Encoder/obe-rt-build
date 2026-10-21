@@ -15,6 +15,9 @@ a live synthetic source, CLI configuration and integration tests. The
 [SRT guide](docs/input-srt.md) covers encrypted caller/listener input and
 automatic recovery after sender restarts. Local tests passed; no SRT WAN test
 has succeeded yet, with listener reachability through the NAT/gateway unresolved.
+The [1080i validation](docs/1080i-validation.md) checks decoded TFF/BFF fields,
+chroma and A/V sync. The [contribution report](docs/contribution-link.md)
+records the real SSH/TCP measurements and the remaining UDP reachability issue.
 
 ## Isolated Ubuntu build
 
