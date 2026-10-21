@@ -70,8 +70,21 @@ URL HTTP con token o autenticazione incorporata.
 Le misure CPU e RSS riguardano il processo OBE; 100% CPU equivale a un core.
 Un processo appena avviato può non avere ancora campioni disponibili. Il tempo
 indica la durata del processo, non una certificazione di continuità del servizio.
-Il bitrate configurato è distinto da una misura del flusso: non sono esposti
-bitrate effettivo, anteprima video, livelli audio o statistiche SRT non disponibili.
+La sezione **Telemetria del flusso** mostra bitrate AVC e UDP misurati, frame/s,
+frame codificati, coda video ed errori locali di invio. Questi valori provengono
+da contatori del motore OBE e sono distinti dai bitrate configurati. Su 1080i50,
+25 frame/s corrispondono ai 50 semiquadri/s. Il bitrate UDP riguarda il payload
+MPEG-TS accettato dal socket locale: non certifica la ricezione a destinazione.
+Non sono esposti anteprima video, livelli audio o statistiche SRT non disponibili.
+
+Il campionamento avviene una volta al secondo e il browser si aggiorna ogni due.
+I rate richiedono due campioni; i valori mancanti restano vuoti. Dopo cinque
+secondi senza campioni validi, le misure scadono e vengono oscurate. Un vecchio
+binario senza `show telemetry` continua a codificare e indica telemetria del
+flusso non disponibile. Per abilitarla serve ricompilare anche `obe-rt` dal
+branch `feat/encoder-telemetry`; la sola modifica del pannello non basta.
+Il primo commit del core che espone questi contatori è `ee5f5a5`.
+
 I log sono limitati e mantenuti in memoria; la riconnessione automatica del
 lettore OBE resta operativa, ma un crash dell'encoder richiede un nuovo avvio.
 
@@ -85,19 +98,39 @@ statistiche su `/tmp`, che creerebbe log senza limite di dimensione.
 validazione, revisione del profilo, persistenza, Host/Origin, gestione del processo,
 stop durante probe, crash, mancata conferma di avvio, riconnessione e protezione
 della passphrase, incluso il blocco degli avvii durante lo spegnimento del servizio.
-I dieci test sono passati il 21 ottobre 2026.
+La suite include anche rate, scadenza dei campioni, contatori non validi,
+compatibilità con binari precedenti e isolamento tra processi.
+Tutti i 15 test sono passati il 21 ottobre 2026. Il test standalone del core
+`obe-rt/tests/statistics.c` verifica incrementi concorrenti, range e reset;
+compilato con ASan/UBSan e superato.
 
 Con il pannello attivo e l'encoder fermo, il test reale si esegue nel container:
 
 ```sh
 docker exec obe-webpanel python3 tests/webpanel-live.py
+docker exec obe-webpanel python3 tests/webpanel-live.py --format 1080i50
 ```
 
 Il test usa sorgente sintetica e porte UDP su loopback, ripristinando il profilo
 iniziale al termine. Probe, start, ricezione, metriche, interruzione/riconnessione,
 stop e decodifica AVC/MP2 sono passati. Il campione PAL rilevato era 720×576i,
 25 frame/s, audio stereo 48 kHz; l'uscita acquisita era di 7.663.068 byte.
-Artefatti: `tests/.build/webpanel-live-o_jul3gd/`, esclusi da Git.
+Artefatti iniziali: `tests/.build/webpanel-live-o_jul3gd/`, esclusi da Git.
+
+La revisione con telemetria è stata collaudata anche sul vero encoder PAL e
+1080i50, includendo interruzione/ripresa sorgente e decodifica AVC/MP2.
+Questi sono gli intervalli osservati in tre campioni di circa un secondo:
+
+| Sorgente | AVC misurato | UDP misurato | Frame/s | Coda video | Errori UDP |
+| --- | --- | --- | --- | --- | --- |
+| PAL | 2,924–3,234 Mbit/s | 6,493–6,595 Mbit/s | 23,99–25,98 | 0 | 0 |
+| 1080i50 | 4,924–5,159 Mbit/s | 9,145–9,851 Mbit/s | 23,98–24,99 | 0–2 | 0 |
+
+I profili di test usano ultrafast, 2 thread e sorgenti sintetiche: queste misure
+verificano la telemetria, non certificano qualità visiva o prestazioni sostenute.
+I contatori aumentano dopo la riconnessione; allo stop tutte le letture diventano
+nulle. Risultati e output: `tests/.build/webpanel-live-499b05t8/` (PAL) e
+`tests/.build/webpanel-live-zrq3pspz/` (HD), ignorati da Git.
 
 In Chromium sono stati provati navigazione, bozza durante polling, validazione
 del mux, profili/salvataggio, probe/avvio sul binario reale, annullamento e

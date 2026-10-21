@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Test the running local panel against real OBE/FFmpeg inside its container.
 
-No production endpoints: generated PAL source and UDP output use loopback.
+No production endpoints: generated PAL/1080i source and UDP output use loopback.
 The saved panel profile is restored; an already-running encoder is rejected.
 """
+import argparse
 import importlib.util
 import json
+import math
 from pathlib import Path
 import socket
 import subprocess
@@ -41,7 +43,22 @@ def wait(predicate, timeout=25):
     raise AssertionError(f"Panel state timed out: {state['phase']}, {state['message']}")
 
 
+def telemetry_ready(state):
+    telemetry = state.get('telemetry', {})
+    rates = [telemetry.get(key) for key in
+             ('video_bitrate_kbps', 'output_bitrate_kbps', 'video_fps')]
+    return (telemetry.get('status') == 'live'
+            and all(type(value) in (int, float) and math.isfinite(value) and value > 0
+                    for value in rates)
+            and 10 <= telemetry['video_fps'] <= 40)
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--format', choices=('pal', '1080i50'), default='pal')
+    args = parser.parse_args()
+    width, height = (1920, 1080) if args.format == '1080i50' else (720, 576)
+    video_kbps, mux_kbps = (8000, 9500) if height == 1080 else (5000, 6500)
     original = request()
     assert not original['process_alive'], 'Stop the encoder before running this isolated test'
     directory = Path(tempfile.mkdtemp(prefix='webpanel-live-', dir=base.ROOT/'tests/.build'))
@@ -64,30 +81,34 @@ def main():
     thread = threading.Thread(target=capture)
     thread.start()
     command = ['ffmpeg', '-nostdin', '-v', 'error', '-re', '-f', 'lavfi', '-i',
-               'testsrc2=size=720x576:rate=50', '-f', 'lavfi', '-i',
+               f'testsrc2=size={width}x{height}:rate=50', '-f', 'lavfi', '-i',
                'sine=frequency=997:sample_rate=48000', '-filter_threads', '1',
-               '-vf', 'interlace=scan=tff:lowpass=0,setsar=16/15', '-c:v', 'mpeg2video',
+               '-vf', f'interlace=scan=tff:lowpass=0,setsar={"1/1" if height == 1080 else "16/15"}', '-c:v', 'mpeg2video',
                '-threads', '2', '-flags', '+ilme+ildct', '-q:v', '4', '-bf', '0',
                '-g', '12', '-c:a', 'mp2', '-b:a', '192k', '-ac', '2', '-f', 'mpegts',
                f'udp://127.0.0.1:{source_port}?pkt_size=1316']
     sender = None
     try:
-        config = dict(original['config'], name='Collaudo webpanel PAL',
+        config = dict(original['config'], name=f'Collaudo webpanel {args.format}',
                       input_url=f'udp://127.0.0.1:{source_port}',
                       output_url=f'udp://127.0.0.1:{output_port}', preset='ultrafast',
-                      video_bitrate_kbps=5000, mux_bitrate_kbps=6500, vbv_buffer_kbits=5000,
+                      video_bitrate_kbps=video_kbps, mux_bitrate_kbps=mux_kbps, vbv_buffer_kbits=video_kbps,
                       bframes=0, lookahead_frames=0, gop_frames=25, threads=2, audio_bitrate_kbps=192)
         state = request('/api/config', {'revision': original['revision'], 'config': config}, 'PUT')
         sender = subprocess.Popen(command, cwd=base.ROOT, env=base.ENV,
                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         request('/api/probe', {'revision': state['revision']}, 'POST')
         probe = wait(lambda s: s['phase'] == 'idle')
-        assert probe['signal']['width'] == 720 and not probe['encoding_started'], probe
+        assert probe['signal']['width'] == width and not probe['encoding_started'], probe
         request('/api/start', {'revision': state['revision']}, 'POST')
         wait(lambda s: s['phase'] == 'running' and s['signal_state'] == 'receiving')
         time.sleep(4)
-        running = request()
+        running = wait(telemetry_ready)
         assert running['metrics']['memory_mb'] > 0
+        first = running['telemetry']
+        second = wait(lambda s: telemetry_ready(s)
+                      and s['telemetry']['video_frames'] > first['video_frames']
+                      and s['telemetry']['output_bytes'] > first['output_bytes'])['telemetry']
         base.stop_sender(sender)
         sender = None
         wait(lambda s: s['phase'] == 'reconnecting')
@@ -95,22 +116,39 @@ def main():
                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         wait(lambda s: s['phase'] == 'running' and s['signal_state'] == 'receiving')
         time.sleep(4)
+        recovered = wait(telemetry_ready)['telemetry']
+        telemetry_samples = [first, second, recovered]
+        for sample in telemetry_samples:
+            assert sample['output_errors'] == 0, sample
+            assert isinstance(sample['video_queue_frames'], int) and sample['video_queue_frames'] >= 0, sample
+            for key in ('video_frames', 'output_bytes', 'output_datagrams'):
+                assert isinstance(sample[key], int) and sample[key] > 0, sample
+        for before, after in zip(telemetry_samples, telemetry_samples[1:]):
+            for key in ('video_frames', 'output_bytes', 'output_datagrams'):
+                assert after[key] >= before[key], (key, before, after)
         request('/api/stop', {}, 'POST')
         stopped = wait(lambda s: s['phase'] == 'idle')
         assert not stopped['process_alive']
+        assert stopped['telemetry']['status'] == 'idle', stopped['telemetry']
+        for key in ('age_seconds', 'video_bitrate_kbps', 'output_bitrate_kbps', 'video_fps',
+                    'video_frames', 'video_queue_frames', 'output_errors', 'output_bytes',
+                    'output_datagrams', 'interval_seconds'):
+            assert stopped['telemetry'][key] is None, (key, stopped['telemetry'])
         finished.set()
         thread.join(timeout=2)
         streams = base.probe(media, '-show_streams')['streams']
         video = next(s for s in streams if s['codec_type'] == 'video')
         audio = next(s for s in streams if s['codec_type'] == 'audio')
-        assert (video['codec_name'], video['width'], video['height']) == ('h264', 720, 576)
+        assert (video['codec_name'], video['width'], video['height']) == ('h264', width, height)
         assert video['field_order'] in ('tt', 'tb') and audio['codec_name'] == 'mp2'
         base.run(['ffmpeg', '-v', 'error', '-xerror', '-i', str(media), '-t', '2',
                   '-map', '0:v:0', '-map', '0:a:0', '-f', 'null', '-'],
                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         result = {'status': 'PASS', 'probe': probe['signal'], 'metrics': running['metrics'],
+                  'telemetry': {'samples': telemetry_samples, 'stopped': stopped['telemetry']},
                   'output_bytes': media.stat().st_size,
-                  'checks': ['probe', 'start', 'metrics', 'reconnect', 'stop', 'AVC/MP2 decode']}
+                  'checks': ['probe', 'start', 'metrics', 'live telemetry', 'monotonic counters',
+                             'reconnect', 'stop', 'idle telemetry', 'AVC/MP2 decode']}
         (directory/'result.json').write_text(json.dumps(result, indent=2)+'\n')
         print(json.dumps(result))
         print(f'Artifacts: {directory}')

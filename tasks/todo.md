@@ -135,3 +135,19 @@ Primo incremento richiesto dall'utente: **completato**. [Guida e limiti](../docs
 - [x] Dieci test API, pipeline reale PAL AVC/MP2 con riconnessione e collaudo Chromium desktop/mobile.
 - [ ] Account/ruoli, preview, livelli audio, statistiche SRT, più encoder e collaudo prolungato.
 - File: `webpanel/`, `tests/webpanel.py`, `tests/webpanel-live.py`, `docs/webpanel.md`.
+
+## Priorità backend confermate — tutte importanti
+
+- **P0 — Telemetria reale (primo incremento completato):** bitrate AVC e UDP, frame interi/s,
+  frame codificati, coda video ed errori di invio; campioni scaduti o assenti espliciti.
+  Verifiche: 15 test API/parser, test atomici C con ASan/UBSan, encoding reale PAL
+  e 1080i50 con riconnessione e controllo browser. [Misure e limiti](../docs/webpanel.md).
+- **P0 — Affidabilità:** recupero opzionale dopo crash con budget di tentativi e
+  attesa progressiva, arresto che cancella ogni riavvio, diagnostica dell'uscita.
+  La riconnessione della sorgente già presente è distinta dal riavvio del processo.
+- **P0 — Qualità e compressione del motore OBE:** T08/T09 rimangono prioritari;
+  benchmark riproducibile PSNR/SSIM con allineamento verificato, bitrate effettivo,
+  carico CPU e code prima di scegliere o modificare i preset 1080i.
+
+La telemetria prepara le misure per il confronto qualità/compressione; non misura
+da sola qualità visiva, latenza end-to-end o perdita sul collegamento Internet.
