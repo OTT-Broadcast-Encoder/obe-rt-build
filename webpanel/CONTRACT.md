@@ -127,7 +127,7 @@ indipendenti. `main` conserva stato e rotte esistenti; nessun autoavvio.
   delle rotte originali, che restano alias di `main`.
 - Identificatori assegnati dal server: `main`, `channel-2`…`channel-4`.
 - Profili aggiuntivi in `.state/channels/{id}/config.json`; porte iniziali distinte.
-- Ingressi UDP/RTP con porte sovrapposte e destinazioni UDP già usate da un
+- Ingressi UDP/RTP/SRT listener con porte sovrapposte e destinazioni UDP già usate da un
   canale attivo sono rifiutati prima dell'avvio (409). Il limite di quattro
   canali non certifica la capacità CPU della macchina.
 - La selezione UI non arresta la codifica; una bozza va salvata o ripristinata
@@ -144,3 +144,9 @@ indipendenti. `main` conserva stato e rotte esistenti; nessun autoavvio.
   `idle|waiting|live|stale|error`. Età massima 3 s, JPEG massimo 1 MiB.
 - Stessi endpoint senza `/channels/{id}` come alias di `main`.
 - Avvio esplicito, nessun autoavvio e nessuna modifica alle uscite OBE.
+
+Il controllo delle porte considera `localport`, `localrtpport` e
+`localrtcpport` per i protocolli che li supportano; le query con chiavi duplicate
+sono rifiutate. Per l'uscita gli alias loopback localhost/127.0.0.1/::1 sono
+considerati la stessa destinazione. Gli alias DNS personalizzati non vengono
+risolti dal controllo: assegnare destinazioni esplicitamente distinte.

@@ -107,7 +107,8 @@ def validate_url(value, field, output=False):
             raise ValueError()
         if parts.scheme in {"udp", "rtp", "tcp", "srt"} and parts.port is None:
             raise ValueError()
-        if any(CREDENTIAL_KEY.search(key) for key, _ in parse_qsl(plain.query, keep_blank_values=True)):
+        query = parse_qsl(plain.query, keep_blank_values=True)
+        if len(query) != len({key for key, _ in query}) or any(CREDENTIAL_KEY.search(key) for key, _ in query):
             raise ValueError()
         if re.search(r"[%;]", plain.netloc):
             raise ValueError()
@@ -617,6 +618,31 @@ class Channels:
     """Independent processes; the original API continues to address main."""
     MAX_CHANNELS = 4
 
+    @staticmethod
+    def input_ports(url):
+        source = urlsplit(url)
+        options = dict(parse_qsl(source.query))
+        if source.scheme not in {"udp", "rtp"} and not (source.scheme == "srt" and options.get("mode") in {"listener", "rendezvous"}):
+            return set()
+        try:
+            port = source.port if source.scheme == "srt" else int(options.get("localport", source.port))
+            if source.scheme == "rtp":
+                port = int(options.get("localrtpport", port))
+            ports = {port}
+            if source.scheme == "rtp":
+                ports.add(int(options.get("localrtcpport", port + 1)))
+            if not all(1 <= value <= 65535 for value in ports):
+                raise ValueError()
+            return ports
+        except (ValueError, TypeError):
+            invalid("input_url", "La porta locale di ricezione deve essere tra 1 e 65535.")
+
+    @staticmethod
+    def output_target(url):
+        target = urlsplit(url)
+        host = "loopback" if target.hostname in {"localhost", "127.0.0.1", "::1"} else target.hostname
+        return host, target.port
+
     def __init__(self, root, state_dir):
         self.root, self.state_dir = Path(root), Path(state_dir)
         self.lock, self.closing = threading.RLock(), False
@@ -667,21 +693,16 @@ class Channels:
                 raise APIError(503, "panel_closing", "Il pannello si sta arrestando.")
             panel = self.get(channel)
             with panel.lock:
-                source = urlsplit(panel.config["input_url"])
+                ports = self.input_ports(panel.config["input_url"])
                 for key, other in self.panels.items():
                     if key == channel:
                         continue
                     with other.lock:
                         if not other._busy():
                             continue
-                        peer = urlsplit(other.config["input_url"])
-                        if source.scheme in {"udp", "rtp"} and peer.scheme in {"udp", "rtp"}:
-                            ports = {source.port, source.port + (source.scheme == "rtp")}
-                            peer_ports = {peer.port, peer.port + (peer.scheme == "rtp")}
-                            if ports & peer_ports:
-                                raise APIError(409, "input_in_use", "Usa porte di ingresso UDP/RTP distinte per i canali attivi.")
-                        output, peer_output = urlsplit(panel.config["output_url"]), urlsplit(other.config["output_url"])
-                        if kind == "start" and (output.hostname, output.port) == (peer_output.hostname, peer_output.port):
+                        if ports & self.input_ports(other.config["input_url"]):
+                            raise APIError(409, "input_in_use", "Usa porte di ingresso UDP/RTP/SRT listener distinte per i canali attivi.")
+                        if kind == "start" and self.output_target(panel.config["output_url"]) == self.output_target(other.config["output_url"]):
                             raise APIError(409, "output_in_use", "Questa uscita è già usata da un altro canale attivo.")
                 return panel.action(kind, payload)
 

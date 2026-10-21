@@ -143,7 +143,8 @@ class PanelTests(unittest.TestCase):
         for value in ['udp://127.0.0.1:12000\nstart', 'udp://127.0.0.1:12000,evil=1',
                       'file:///etc/passwd', 'http://user:password@localhost/video',
                       'srt://localhost:12000?%70assphrase=dummy-test-key',
-                      'srt://localhost:12000?pbkeylen=16', 'udp://127.0.0.1:70000']:
+                      'srt://localhost:12000?pbkeylen=16', 'udp://127.0.0.1:70000',
+                      'udp://localhost:12000?localport=12000&localport=12020']:
             with self.subTest(url=value):
                 self.assertEqual(self.save(input_url=value)[0], 422)
         for changes in [{'video_bitrate_kbps': True}, {'mux_bitrate_kbps': 128},
@@ -325,6 +326,24 @@ class PanelTests(unittest.TestCase):
         self.request('POST', '/api/stop', {})
         self.assertEqual(self.state()['preview']['status'], 'idle')
         with self.assertRaises(ProcessLookupError): os.kill(preview['pid'], 0)
+
+    def test_channel_ports_include_local_bindings_and_output_aliases(self):
+        _, created = self.request('POST', '/api/channels', {'name': 'Port checks'})
+        prefix = '/api/channels/'+created['id']
+        self.request('POST', '/api/start', {'revision': self.state()['revision']})
+        self.wait_phase({'running'})
+        for changes, code in (
+            ({'input_url': 'udp://127.0.0.1:12345?localport=12000'}, 'input_in_use'),
+            ({'input_url': 'udp://127.0.0.1:12000?localrtpport=12345'}, 'input_in_use'),
+            ({'input_url': 'rtp://127.0.0.1:12345?localrtcpport=12000'}, 'input_in_use'),
+            ({'input_url': 'srt://127.0.0.1:12000?mode=listener'}, 'input_in_use'),
+            ({'output_url': 'udp://localhost:13000?ttl=2'}, 'output_in_use')):
+            state = self.request('GET', prefix+'/state')[1]
+            config = dict(created['state']['config'], **changes)
+            saved = self.request('PUT', prefix+'/config', {'revision': state['revision'], 'config': config})[1]
+            status, result = self.request('POST', prefix+'/start', {'revision': saved['revision']})
+            self.assertEqual(status, 409, result)
+            self.assertEqual(result['error']['code'], code)
 
     def test_conflicts_limits_and_invalid_ids(self):
         status, created = self.request('POST', '/api/channels', {'name': 'Duplicato'})
