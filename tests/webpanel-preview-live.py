@@ -5,6 +5,7 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 from urllib.request import urlopen
@@ -18,8 +19,10 @@ api, base = multi.api, multi.base
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--hold', type=int, default=0)
+    parser.add_argument('--pilot-seconds', type=int, default=0)
     args = parser.parse_args()
     assert 0 <= args.hold <= 120
+    assert args.pilot_seconds == 0 or 10 <= args.pilot_seconds <= 60
     original = api('main')
     assert not original['process_alive'], 'Use an idle test channel'
     directory = Path(tempfile.mkdtemp(prefix='preview-', dir=base.ROOT/'tests/.build'))
@@ -49,6 +52,10 @@ def main():
         video = base.probe(picture, '-show_streams')['streams'][0]
         assert (video['width'], video['height']) == (640, 360), video
         print('Preview HD ready', flush=True)
+        if args.pilot_seconds:
+            time.sleep(5)
+            subprocess.run([sys.executable, 'webpanel/pilot.py', '--panel', multi.live.API,
+                            '--seconds', str(args.pilot_seconds), '--output', str(directory/'pilot')], check=True)
         if args.hold: time.sleep(args.hold)
         api('main', 'preview-stop', {}, 'POST')
         stopped = api('main')
