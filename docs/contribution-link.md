@@ -90,3 +90,11 @@ recuperati, poi interrompere e riavviare il mittente. La compatibilità
 SRT 1.4.0 remota ↔ 1.5.7 locale va verificata su questo percorso.
 La [cifratura e riconnessione OBE](input-srt.md) sono già collaudate in
 laboratorio, ma non costituiscono una prova SRT attraverso Internet.
+
+## Gateway riproducibile
+
+Il [relay MPEG-TS via SSH](ssh-contribution-gateway.md) rende ripetibile il
+percorso remoto già disponibile, con durata e retry limitati e destinazione
+locale/container. Non richiede inoltri sul router. Il [pilota HD](hd-pilot.md)
+esporta separatamente le misure di un canale 1080i50; un contributo PAL non
+soddisfa i criteri del pilota HD.
