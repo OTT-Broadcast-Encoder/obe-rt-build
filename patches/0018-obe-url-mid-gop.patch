@@ -1,0 +1,27 @@
+diff --git a/input/lavf/lavf.c b/input/lavf/lavf.c
+index 151db00..bb9075a 100644
+--- a/input/lavf/lavf.c
++++ b/input/lavf/lavf.c
+@@ -402,7 +402,12 @@ static int deliver_frame( url_input_t *ctx, int kind )
+ 
+ static int decode_packet( url_input_t *ctx, int kind, AVPacket *packet, int probe )
+ {
++    /* Live joins can precede codec headers/the next random access point.
++     * Input deadlines still bound this initial wait. Once a frame has been
++     * decoded, retain the normal recovery path for damaged packets. */
++    int waiting = probe ? !ctx->first[kind] : !(ctx->session_streams & (1 << kind));
+     int ret = avcodec_send_packet(ctx->decoder[kind], packet);
++    if( waiting && ret == AVERROR_INVALIDDATA ) return 0;
+     if( ret < 0 ) return ret;
+     while( (ret = avcodec_receive_frame(ctx->decoder[kind], ctx->frame)) >= 0 )
+     {
+@@ -411,7 +416,8 @@ static int decode_packet( url_input_t *ctx, int kind, AVPacket *packet, int prob
+         if( ret < 0 ) return ret;
+         cancellation_point();
+     }
+-    return ret == AVERROR(EAGAIN) || ret == AVERROR_EOF ? 0 : ret;
++    return ret == AVERROR(EAGAIN) || ret == AVERROR_EOF ||
++           (waiting && ret == AVERROR_INVALIDDATA) ? 0 : ret;
+ }
+ 
+ static void *probe_input( void *opaque )
