@@ -25,3 +25,4 @@ obecli
 zimg/
 vapoursynth/
 vs-plugins/vapoursynth-*
+vaapi/libdrm-*.tar.xz
