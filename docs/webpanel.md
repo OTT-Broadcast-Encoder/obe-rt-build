@@ -179,3 +179,23 @@ Non sostituisce controllo dei campi, ascolto audio o analisi qualità.
 Test: `tests/webpanel-preview-unit.py`, lifecycle API in `tests/webpanel.py` e
 `docker exec obe-webpanel-next python3 tests/webpanel-preview-live.py`.
 Quest'ultimo usa solo HD sintetico e porte locali; ripristina il profilo iniziale.
+
+### Banco di questo incremento
+
+Il checkout `obe-rt-build-panel-next` usa `feat/panel-multichannel` e il core
+`fix/url-mid-gop`. Il container `obe-webpanel-next` espone solo
+`127.0.0.1:18089`; il precedente container di collaudo è conservato fermo come
+`obe-webpanel-next-baseline`. Dipendenze e SDK già presenti sono montati in sola
+lettura dal checkout di build; nessuna dipendenza nuova è installata sull'host.
+Il binario candidato è nel nuovo checkout e lo stato in `webpanel/.state/`.
+Il servizio originale 18088 e il suo checkout restano indipendenti.
+
+Per il browser remoto: `ssh -N -L 18089:127.0.0.1:18089 mini-server`.
+Per fermare il solo candidato: `docker stop --timeout 15 obe-webpanel-next`;
+per riavviarlo: `docker start obe-webpanel-next` (gli encoder rimangono fermi).
+
+Vedi anche [gateway MPEG-TS remoto](ssh-contribution-gateway.md) e
+[collaudo HD con CSV/JSON](hd-pilot.md). UI verificata in Chromium a 390 e
+1440 px, cambio/creazione canale, fallback per URL inesistente e JPEG HD reale,
+senza overflow o errori console. Le immagini vengono inserite solo dopo il
+caricamento: risolta la segnalazione del controllo design, senza soppressioni.

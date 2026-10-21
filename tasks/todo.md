@@ -1,6 +1,6 @@
 # Attività — banco di prova encoding e input IP
 
-Riferimento: [roadmap](plan.md). T03 completato; T04/T05/T06 parziali con URL e SRT cifrato collaudati localmente. T07 supera il nativo 1080i50 TFF/BFF; conversioni e durata restano aperte. T02 dispone di misure SSH/TCP, mentre UDP/SRT Internet attende l'inoltro sul gateway. Priorità confermata: qualità/compressione, 1080i e ingresso URL per test senza SDI. I file sono riferimenti per le misure; il lettore file diretto è opzionale. Non sono state aperte issue da questo documento.
+Riferimento: [roadmap](plan.md). T03 completato; T04/T05/T06 parziali con URL e SRT cifrato collaudati localmente. T07 supera il nativo 1080i50 TFF/BFF; conversioni e durata restano aperte. T02 dispone di misure SSH/TCP, mentre UDP/SRT Internet resta da validare senza interventi sui router. Priorità confermata: qualità/compressione, 1080i e ingresso URL per test senza SDI. I file sono riferimenti per le misure; il lettore file diretto è opzionale. Non sono state aperte issue da questo documento.
 
 Primo incremento: T04 → T05 su URL UDP/RTP locale, usando le dipendenze già disponibili. T03 abilita SRT, necessario insieme a T05 per T06. I campioni sintetici consentono di iniziare senza attendere il collegamento al playout; T01 e T02 completano i riferimenti e le condizioni reali.
 

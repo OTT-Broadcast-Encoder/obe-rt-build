@@ -58,8 +58,9 @@ richiede ancora l'avvio manuale.
 - [x] Ingresso URL UDP/RTP e SRT nella build isolata, con prove locali senza SDI.
 - [x] SRT cifrato: chiave errata, riconnessione e recupero di perdite/ritardi verificati in laboratorio.
 - [x] Prime misure Uno4 → sviluppo su SSH/TCP e ricezione del contributo PAL.
-- [ ] Contribuzione dal playout via SRT o gateway sul percorso remoto raggiungibile concordato.
+- [x] Gateway MPEG-TS Uno4 → sviluppo via SSH, con durata/retry limitati, encoding e preview verificati su PAL.
 - [ ] Misure Internet di banda utile, RTT, jitter, perdite e recupero SRT.
+- [x] Osservatore del pilota HD: CSV/JSON, soglie, revisioni e distinzione fra prova breve e collaudo prolungato; smoke sintetico di 30 s passato.
 - [ ] Pilota 1080i50 di almeno 24 ore sul server obiettivo e sui ricevitori reali.
 - [ ] Controllo MPEG-TS, PCR/PTS, continuità A/V e procedura di ritorno al PAL verificata.
 
@@ -72,15 +73,31 @@ di porta è prevista: l'utente ha chiesto di non procedere con quell'intervento.
 - [x] Profilo persistente, preset iniziali, verifica ingresso, avvio/arresto e validazione delle richieste.
 - [x] Accesso locale o tramite tunnel SSH; passphrase SRT effimera e log limitati.
 - [ ] Libreria di profili utente con import/export e versioni ripristinabili.
-- [ ] Anteprima video, livelli audio e indicatori di assenza segnale.
+- [x] Preview video su richiesta per uscite UDP locali/multicast, immagini scadute oscurate e arresto insieme al canale.
+- [ ] Livelli audio e monitoraggio del programma remoto sul ricevitore finale.
 - [ ] Account, ruoli e accesso HTTPS prima di un'eventuale esposizione condivisa.
 
 ## P2 — Estensioni successive
 
-- [ ] Gestione di più encoder/canali dal pannello.
+- [x] Gestione di massimo quattro canali con profili/processi separati; due encoder reali PAL/1080i verificati in parallelo.
 - [ ] Ridondanza MAIN/BACKUP e commutazione controllata.
 - [ ] Valutazione HEVC, GPU e UHD con benchmark separati.
 - [ ] Ulteriori trasporti e aggiornamenti degli SDK proprietari secondo necessità.
 
 Dettagli e criteri di accettazione: [attività tecniche](tasks/todo.md),
 [piano di misura](tasks/plan.md), [webpanel e risultati](docs/webpanel.md).
+
+## Incremento contribuzione / HD / preview / multicanale
+
+Implementazione isolata in `feat/panel-multichannel`; correzione del core in
+`fix/url-mid-gop` (`d318854`). Il test di ingresso H.264 senza intestazioni iniziali
+fallisce prima della correzione e passa dopo; le prove H.264/AAC e HD con
+riconnessione sono passate. I branch non sono stati pubblicati.
+
+Servizio di prova: `http://127.0.0.1:18089`, con stato indipendente dal pannello
+18088. Nessun encoder viene avviato automaticamente. Gateway remoto collaudato
+per 60 s: PAL 720×576i25, MP2 stereo 48 kHz, 1,2981 Mbit/s inoltrati su SSH/TCP.
+Il campione non certifica SRT Internet, jitter/perdite UDP o HD in produzione.
+
+Procedure: [gateway remoto](docs/ssh-contribution-gateway.md),
+[pilota HD](docs/hd-pilot.md), [webpanel](docs/webpanel.md).
