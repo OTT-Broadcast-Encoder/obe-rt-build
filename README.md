@@ -3,6 +3,14 @@ Building the OBE environment from pinned upstream releases and the OBE forks.
 The open-source library snapshot is dated 2026-10-21. Sources and artifacts
 are kept in this checkout, with installed libraries under `target-root`.
 
+The [feature roadmap](tasks/plan.md) and [implementation backlog](tasks/todo.md)
+prioritize encoding quality, the PAL-to-1080i transition, and URL-based network
+input for testing without SDI (in Italian).
+
+The [URL input guide](docs/input-url.md) describes the first UDP/RTP MPEG-TS
+input implementation, a live synthetic source, CLI configuration and its
+integration tests. SRT and the Internet contribution link remain follow-up work.
+
 ## Isolated Ubuntu build
 
 From the repository root, build the toolchain image and run the build inside it:
