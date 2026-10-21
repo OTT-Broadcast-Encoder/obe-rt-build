@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101519">
+  <title>OBE · Controllo encoder</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Vai al contenuto</a>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Navigazione principale">
+      <a class="brand" href="#overview" aria-label="OBE, panoramica">
+        <svg class="brand-mark" viewBox="0 0 36 36" fill="none" aria-hidden="true"><path d="M5 11h7v14H5zm10-6h7v26h-7zm10 10h7v6h-7z" fill="currentColor"/></svg>
+        <span><strong>OBE<span class="brand-point">.</span></strong><span class="brand-caption">Broadcast encoder</span></span>
+      </a>
+      <nav class="main-nav">
+        <a href="#overview" data-view="overview" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>Panoramica</span></a>
+        <a href="#configuration" data-view="configuration"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg><span>Configurazione</span></a>
+        <a href="#events" data-view="events"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h13M8 12h13M8 19h13M3 5h.01M3 12h.01M3 19h.01"/></svg><span>Registro eventi</span><span class="nav-count" id="event-count">0</span></a>
+      </nav>
+      <div class="sidebar-bottom"><div class="local-status"><span class="status-dot" id="api-dot"></span><span id="api-status">Connessione…</span></div><p>Un encoder. Un segnale.</p><div class="version-line">OBE Control <span id="panel-version">—</span></div></div>
+    </aside>
+
+    <div class="main-shell">
+      <header class="topbar"><span class="breadcrumb">Workspace <span>/</span> <strong id="breadcrumb-current">Panoramica</strong></span><span class="service-label"><span class="small-square"></span> Servizio locale</span></header>
+      <main id="main-content" tabindex="-1">
+        <div id="api-error" class="notice notice-error" role="alert" hidden></div>
+        <div id="action-notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+        <section id="view-overview" class="view" aria-labelledby="overview-heading">
+          <div class="page-heading"><div><h1 id="overview-heading">Panoramica</h1><p>Il tuo flusso, dall’ingresso all’uscita.</p></div><a href="#configuration" class="button button-quiet"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg>Configura encoder</a></div>
+
+          <section class="session-panel" aria-labelledby="session-heading">
+            <div class="session-top"><span class="session-name" id="session-name">Profilo encoder</span><span class="status-tag" id="phase-tag">In connessione</span></div>
+            <div class="session-body"><div class="session-status"><div class="encoder-indicator" id="encoder-indicator" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div><div><h2 id="session-heading">Connessione al servizio</h2><p id="session-message">Lettura dello stato dell’encoder…</p></div></div><div class="session-actions"><button class="button button-outline" type="button" data-action="probe" disabled>Verifica ingresso</button><button class="button button-primary" type="button" data-action="start" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>Avvia encoder</button><button class="button button-danger" type="button" data-action="stop" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>Arresta encoder</button></div></div>
+            <div class="session-foot"><span id="session-detail">Nessun processo verificato</span><span class="draft-link" id="overview-draft" hidden>Modifiche da salvare <a href="#configuration">Apri configurazione</a></span><span id="session-pid" class="mono">PID —</span></div>
+          </section>
+
+          <section class="signal-section" aria-labelledby="signal-heading">
+            <div class="section-heading"><h2 id="signal-heading">Percorso del segnale</h2><span class="text-muted" id="signal-state">Stato da verificare</span></div>
+            <div class="signal-path">
+              <article class="signal-stage"><div class="stage-heading"><span class="stage-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8v12h16V8M12 3v11m-4-4 4 4 4-4"/></svg></span><span>Ingresso</span><span class="protocol-chip" id="input-protocol">—</span></div><h3 id="input-format">In attesa della sorgente</h3><p class="endpoint mono" id="input-url">—</p><div class="stage-foot"><span class="status-dot neutral" id="signal-dot"></span><span id="input-detail">Formato non ancora rilevato</span></div></article>
+              <div class="path-connector" aria-hidden="true"><span></span><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>
+              <article class="signal-stage codec-stage"><div class="stage-heading"><span class="stage-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4m12-6h4m-4 6h4"/></svg></span><span>Codifica</span><span class="protocol-chip">x264</span></div><h3>H.264 <span>/ AVC</span></h3><p id="video-settings">Configurazione da caricare</p><div class="stage-foot"><span id="audio-format">Audio MP2 se presente</span></div></article>
+              <div class="path-connector" aria-hidden="true"><span></span><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>
+              <article class="signal-stage"><div class="stage-heading"><span class="stage-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16V4h16v12M12 21V10m-4 4 4-4 4 4"/></svg></span><span>Uscita</span><span class="protocol-chip">UDP</span></div><h3>MPEG-TS <span>/ CBR</span></h3><p class="endpoint mono" id="output-url">—</p><div class="stage-foot"><span id="mux-settings">Bitrate configurato: —</span></div></article>
+            </div>
+            <p class="signal-note">Formato e cadenza ereditati dalla sorgente. Lo stato dell’encoder non conferma la ricezione a destinazione.</p>
+          </section>
+
+          <div class="telemetry-layout">
+            <section class="telemetry-panel" aria-labelledby="telemetry-heading"><div class="section-heading"><h2 id="telemetry-heading">Telemetria processo</h2><span class="sampling-label"><span class="status-dot neutral" id="sampling-dot"></span>Campioni ogni 2 s</span></div><div class="metrics"><div class="metric"><span class="metric-label">CPU encoder</span><div class="metric-value"><span id="cpu-value">—</span><span class="metric-unit">%</span></div><span class="metric-hint">100% = un core</span></div><div class="metric"><span class="metric-label">Memoria RSS</span><div class="metric-value"><span id="memory-value">—</span><span class="metric-unit">MB</span></div><span class="metric-hint">Memoria del processo</span></div><div class="metric"><span class="metric-label">Tempo di attività</span><div class="metric-value uptime-value" id="uptime-value">—</div><span class="metric-hint" id="uptime-hint">Dall’avvio del processo</span></div></div><div class="chart-container"><svg id="cpu-chart" viewBox="0 0 600 92" preserveAspectRatio="none" role="img" aria-labelledby="chart-title"><title id="chart-title">CPU encoder: nessun campione disponibile</title><path class="chart-grid" d="M0 12H600M0 46H600M0 80H600"/><path id="cpu-area" class="chart-area"/><path id="cpu-line" class="chart-line"/></svg><p class="chart-empty" id="chart-empty">Il grafico si popola con il processo attivo</p></div><div class="chart-caption"><span id="chart-range">CPU · nessun campione</span><span id="chart-scale">Solo misure reali</span></div></section>
+            <section class="recent-events-panel" aria-labelledby="recent-events-heading"><div class="section-heading"><h2 id="recent-events-heading">Ultime attività</h2><a href="#events" class="text-link">Tutte <span aria-hidden="true">↗</span></a></div><ol class="event-list recent-events" id="recent-events"><li class="empty-events">Le attività compariranno qui.</li></ol></section>
+          </div>
+          <div class="overview-footer"><span>Open Broadcast Encoder</span><span id="last-update">In attesa del servizio</span></div>
+        </section>
+
+        <section id="view-configuration" class="view" aria-labelledby="configuration-heading" hidden>
+          <div class="page-heading"><div><h1 id="configuration-heading">Configurazione</h1><p>Prepara il profilo, verifica l’ingresso e avvia la codifica.</p></div><span class="status-tag" id="draft-status">Caricamento</span></div>
+          <form id="config-form" novalidate>
+            <div class="configuration-layout">
+              <div class="config-fields">
+                <section class="form-section" aria-labelledby="profile-heading"><div class="form-section-heading"><span class="section-number">01</span><div><h2 id="profile-heading">Profilo e connessioni</h2><p>Definisci la sorgente e la destinazione del flusso.</p></div></div><div class="field-grid"><div class="field"><label for="config-name">Nome del profilo</label><input id="config-name" name="name" type="text" maxlength="80" required autocomplete="off"><small>Un nome riconoscibile per questa configurazione.</small></div><div class="field"><label for="profile-select">Parti da un profilo</label><select id="profile-select"><option value="">Seleziona un profilo…</option></select><small>Carica una bozza; il salvataggio resta manuale.</small></div><div class="field full-width"><label for="config-input-url">URL ingresso</label><input id="config-input-url" name="input_url" type="text" required spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="input-url-help"><small id="input-url-help">Sorgente di rete, ad esempio udp://127.0.0.1:12000. Nessuna credenziale nell’URL.</small></div><div class="field full-width"><label for="config-output-url">URL uscita UDP</label><input id="config-output-url" name="output_url" type="text" required spellcheck="false" autocapitalize="off" autocomplete="off"><small>Destinazione MPEG-TS, ad esempio udp://127.0.0.1:13000.</small></div></div></section>
+                <section class="form-section" aria-labelledby="video-heading"><div class="form-section-heading"><span class="section-number">02</span><div><h2 id="video-heading">Codifica video</h2><p>AVC con risoluzione e cadenza della sorgente, senza scaling.</p></div></div><div class="field-grid three-columns"><div class="field"><label for="config-video-bitrate">Bitrate video <span>kb/s</span></label><input id="config-video-bitrate" name="video_bitrate_kbps" type="number" min="128" max="50000" step="1" required><small>Da 128 a 50.000 kb/s.</small></div><div class="field"><label for="config-mux-bitrate">Bitrate multiplex <span>kb/s</span></label><input id="config-mux-bitrate" name="mux_bitrate_kbps" type="number" min="320" max="100000" step="1" required><small>Almeno video + audio + 128 kb/s.</small></div><div class="field"><label for="config-vbv">Buffer VBV <span>kbit</span></label><input id="config-vbv" name="vbv_buffer_kbits" type="number" min="128" max="100000" step="1" required><small>Da 128 a 100.000 kbit.</small></div><div class="field"><label for="config-preset">Preset x264</label><select id="config-preset" name="preset"><option>ultrafast</option><option>superfast</option><option>veryfast</option><option>faster</option><option>fast</option><option>medium</option><option>slow</option><option>slower</option><option>veryslow</option></select><small>Più lento richiede più CPU.</small></div><div class="field"><label for="config-gop">Intervallo GOP <span>frame</span></label><input id="config-gop" name="gop_frames" type="number" min="1" max="300" step="1" required><small>Da 1 a 300 frame.</small></div><div class="field"><label for="config-bframes">B-frame</label><input id="config-bframes" name="bframes" type="number" min="0" max="8" step="1" required><small>Da 0 a 8 frame consecutivi.</small></div><div class="field"><label for="config-lookahead">Lookahead <span>frame</span></label><input id="config-lookahead" name="lookahead_frames" type="number" min="0" max="100" step="1" required><small>Analisi anticipata: da 0 a 100.</small></div><div class="field"><label for="config-threads">Thread encoder</label><input id="config-threads" name="threads" type="number" min="1" max="32" step="1" required><small>Da 1 a 32 thread.</small></div></div></section>
+                <section class="form-section" aria-labelledby="audio-heading"><div class="form-section-heading"><span class="section-number">03</span><div><h2 id="audio-heading">Audio</h2><p>L’audio in ingresso deve essere stereo a 48 kHz; viene codificato in MP2.</p></div></div><div class="field-grid"><div class="field"><label for="config-audio-bitrate">Bitrate audio <span>kb/s</span></label><select id="config-audio-bitrate" name="audio_bitrate_kbps"><option value="64">64</option><option value="96">96</option><option value="128">128</option><option value="160">160</option><option value="192">192</option><option value="224">224</option><option value="256">256</option><option value="320">320</option><option value="384">384</option></select><small>In assenza di audio, l’uscita contiene solo video.</small></div></div></section>
+              </div>
+              <aside class="config-aside"><section class="config-guide"><svg class="guide-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 7v6c0 5 9 8 9 8s9-3 9-8V7zM8 12l3 3 5-6"/></svg><h2>Prima della messa in onda</h2><ol><li>Salva le modifiche al profilo.</li><li>Verifica che la sorgente sia raggiungibile.</li><li>Avvia e controlla la ricezione a destinazione.</li></ol><p>Puoi salvare e verificare il profilo quando l’encoder è fermo.</p></section><section id="srt-section" class="srt-section" hidden><h2>Sorgente SRT protetta</h2><div class="field"><label for="srt-passphrase">Passphrase per la prossima azione</label><input id="srt-passphrase" type="password" maxlength="79" autocomplete="new-password" spellcheck="false" aria-describedby="passphrase-help"><small id="passphrase-help">Facoltativa, da 10 a 79 byte. Usata solo per verifica o avvio, poi cancellata. Non viene salvata nel profilo.</small></div></section><div class="config-revision">Profilo salvato <span id="config-revision">—</span></div></aside>
+            </div>
+            <div class="config-action-bar"><div><strong id="save-status">Caricamento del profilo…</strong><span id="save-hint">Attendi la connessione al servizio.</span></div><div class="config-buttons"><button class="button button-quiet" type="button" id="discard-button" disabled>Ripristina</button><button class="button button-primary" type="submit" id="save-button" disabled>Salva configurazione</button><button class="button button-outline" type="button" data-action="probe" disabled>Verifica ingresso</button><button class="button button-outline" type="button" data-action="start" disabled>Avvia encoder</button></div></div>
+          </form>
+        </section>
+
+        <section id="view-events" class="view" aria-labelledby="events-heading" hidden>
+          <div class="page-heading"><div><h1 id="events-heading">Registro eventi</h1><p>Le attività reali dell’encoder e del pannello.</p></div><div class="event-filter"><label for="event-filter">Mostra</label><select id="event-filter"><option value="all">Tutti gli eventi</option><option value="info">Informazioni</option><option value="warning">Avvisi</option><option value="error">Errori</option></select></div></div>
+          <section class="event-register" aria-label="Eventi del servizio"><div class="event-register-heading"><span>Ora locale</span><span>Evento</span></div><ol class="event-list full-events" id="all-events"><li class="empty-events">Nessun evento disponibile.</li></ol><div class="event-register-footer"><span id="event-summary">Nessun evento</span><span>Ultimi 200 eventi · aggiornamento ogni 2 s</span></div></section>
+        </section>
+      </main>
+    </div>
+  </div>
+  <dialog id="stop-dialog" aria-labelledby="stop-title" aria-describedby="stop-description"><div class="dialog-content"><span class="dialog-symbol" aria-hidden="true">■</span><h2 id="stop-title">Arrestare l’encoder?</h2><p id="stop-description">Il flusso in uscita verrà interrotto. Potrai riavviarlo manualmente con il profilo salvato.</p><div class="dialog-actions"><button type="button" class="button button-quiet" id="cancel-stop" autofocus>Continua la codifica</button><button type="button" class="button button-danger" id="confirm-stop">Arresta encoder</button></div></div></dialog>
+</body>
+</html>
