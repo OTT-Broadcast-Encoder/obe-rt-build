@@ -64,6 +64,7 @@ Stato: **parziale**. Modulo registrato in probe e avvio, audio opzionale stereo 
 
 Portare il lettore URL già collaudato su SRT, poi sul collegamento Internet, e misurare il costo di ingresso nella pipeline.
 - [x] Caller/listener cifrati: riavvio mittente e PTS azzerati recuperati; timestamp A/V continui; `quit` senza sorgente in 0,03 s. Chiave errata respinta in 3,02 s dopo controllo positivo.
+- [x] Recupero ARQ locale libSRT live cifrato: 43/1007 pacchetti scartati dal proxy, tutti recuperati; altri 57 ritardati di 80 ms, payload identico. Test `tests/srt-loss.py`, distinto dalla pipeline OBE e dalle misure WAN.
 - [ ] Timeout interrompibili, arresto rapido, code limitate e gestione dichiarata di perdita, riconnessione e cambio formato.
 - [ ] Misure distinte di decode, conversioni, copie, CPU e memoria; una sola conversione verso il formato richiesto quando possibile e ownership dei buffer verificata.
 - Verifica: stream noto in laboratorio, perdita/ritardo, sorgente ferma, formato inatteso e ripartenza; poi campione live con il profilo di T02. Nessuna crescita indefinita della memoria.

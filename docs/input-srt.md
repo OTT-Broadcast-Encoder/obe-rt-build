@@ -58,4 +58,24 @@ Esiti rilevati il 21 ottobre 2026 nell'immagine `obe-rt-build:srt-2026-10-21`:
 
 Gli artefatti caller/listener sono in `tests/.build/input-srt-0qkbhcqh`; il risultato del caso con chiave errata è in `tests/.build/srt-wrong-key.log`, con i suoi artefatti in `tests/.build/input-srt-mxnaw8xj`. La build precedente, senza SRT, falliva esplicitamente al controllo iniziale dei protocolli FFmpeg.
 
+## Recupero dei pacchetti persi
+
+Nella stessa immagine, `python3 tests/srt-loss.py` verifica separatamente il
+trasporto libSRT live cifrato, senza encoding OBE. Un proxy UDP su loopback
+scarta una volta ogni 23 pacchetti dati e ritarda di 80 ms ogni 17º pacchetto
+non scartato; lascia passare handshake, controllo e ritrasmissioni.
+Confronta tutti i byte ricevuti, compresa la coda dopo l'arresto, e i contatori
+nativi SRT. Nessuna regola o interfaccia della rete host viene modificata.
+
+Il 21 ottobre 2026 sono passati baseline e caso con perdita/ritardo:
+**43/1007 pacchetti scartati (4,27%), tutti e 43 recuperati**; altri 57
+ritardati di 80 ms; 100 ritrasmissioni osservate e confermate dal ricevitore.
+Payload di 1.325.212 byte con SHA-256 identico; nessun pacchetto scartato
+dal ricevitore nei contatori campionati. Latenza SRT configurata 300 ms,
+durata circa 5,56 s per caso. Artefatti della prima esecuzione completa:
+`tests/.build/srt-loss-jzsdfx2d/result.json`; riesecuzione finale in
+`tests/.build/srt-loss-final.log`. Questa prova deterministica dimostra
+il recupero ARQ in laboratorio; non misura la tolleranza alla perdita
+sulla rete reale, con burst, code e ritrasmissioni anch'esse soggette a perdita.
+
 **Nessuna prova SRT sulla WAN è riuscita finora.** La raggiungibilità del listener attraverso il NAT/gateway resta da risolvere e verificare: i risultati sopra provengono dal loopback nello stesso container. Restano da misurare perdita/jitter, latenza e margine di bitrate sulla tratta reale, oltre alla qualità su contenuti reali e alla stabilità prolungata. Il nativo 1080i50 ha un [collaudo locale dedicato](1080i-validation.md). I file TS live possono terminare con un PES incompleto: il controllo analizza l'intervallo audio/video completo dopo la ripresa.
