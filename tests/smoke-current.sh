@@ -16,14 +16,14 @@ cc -O2 -g -Iobe-rt -Iobe-rt/obe $(pkg-config --cflags libavcodec) \
     -o tests/.build/audio-encoders $(pkg-config --libs --static libavcodec libswresample twolame) -lpthread
 tests/.build/audio-encoders
 
-for name in mono.aac stereo.aac surround.aac stereo-hev1.aac stereo-hev2.aac stereo.ac3 surround.eac3 stereo.mp2; do
+for name in mono.aac stereo.aac surround.aac stereo-hev1.aac stereo-hev2.aac stereo.ac3 surround.eac3 stereo.mp2 url-stereo.aac url-stereo.ac3; do
     ffmpeg -v error -y -i "tests/.build/$name" -f f32le "tests/.build/$name.f32"
 done
 python3 - <<'PY'
 from array import array
 from pathlib import Path
 import math
-for name in ('mono.aac', 'stereo.aac', 'surround.aac', 'stereo-hev1.aac', 'stereo-hev2.aac', 'stereo.ac3', 'surround.eac3', 'stereo.mp2'):
+for name in ('mono.aac', 'stereo.aac', 'surround.aac', 'stereo-hev1.aac', 'stereo-hev2.aac', 'stereo.ac3', 'surround.eac3', 'stereo.mp2', 'url-stereo.aac', 'url-stereo.ac3'):
     samples = array('f')
     samples.frombytes(Path(f'tests/.build/{name}.f32').read_bytes())
     assert len(samples) > 10000, name

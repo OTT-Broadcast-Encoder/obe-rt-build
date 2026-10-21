@@ -8,7 +8,7 @@
 static obe_encoder_t *active_encoder;
 static FILE *encoded_output;
 static int output_count;
-static int64_t previous_pts, expected_step;
+static int64_t previous_pts, expected_step, expected_first_pts;
 
 obe_coded_frame_t *new_coded_frame(int stream_id, int len)
 {
@@ -28,6 +28,8 @@ int add_to_queue(obe_queue_t *queue, void *item)
     assert(frame->len > 0 && frame->random_access);
     if (output_count)
         assert(frame->pts - previous_pts == expected_step);
+    else if (expected_first_pts)
+        assert(frame->pts == expected_first_pts);
     previous_pts = frame->pts;
     output_count++;
     assert(fwrite(frame->data, 1, frame->len, encoded_output) == (size_t)frame->len);
@@ -52,14 +54,19 @@ static void release_audio(void *ptr)
     free(frame->audio_frame.audio_data[0]);
 }
 
-static void encode_case(const char *name, int format, uint64_t layout, int frames_per_pes, int aac_profile)
+static void encode_case(const char *name, int format, uint64_t layout, int frames_per_pes, int aac_profile, int url_input)
 {
     const int chunk_sizes[] = {480, 960, 1024, 1920};
+    const int url_chunk_sizes[] = {2048, 4096, 1024, 1152};
     const int num_chunks = 160;
     int channels = av_popcount64(layout);
     int samples_per_frame = format == AUDIO_MP2 ? 1152 : format == AUDIO_AAC ?
         (aac_profile == AAC_LC ? 1024 : 2048) : 1536;
     obe_t h = {0};
+    obe_device_t device = {0};
+    device.device_type = url_input ? INPUT_URL : INPUT_DEVICE_DECKLINK;
+    h.devices[0] = &device;
+    h.num_devices = 1;
     obe_encoder_t encoder = {0};
     obe_output_stream_t stream = {0};
     obe_aud_enc_params_t *params = aud_enc_params_alloc();
@@ -88,7 +95,7 @@ static void encode_case(const char *name, int format, uint64_t layout, int frame
 
     int64_t total_samples = 0;
     for (int n = 0; n < num_chunks; ++n) {
-        int samples = chunk_sizes[n % 4];
+        int samples = url_input ? url_chunk_sizes[n % 4] : chunk_sizes[n % 4];
         obe_raw_frame_t *frame = calloc(1, sizeof(*frame));
         assert(frame);
         frame->release_data = release_audio;
@@ -115,6 +122,7 @@ static void encode_case(const char *name, int format, uint64_t layout, int frame
     assert(encoded_output);
     active_encoder = &encoder;
     output_count = 0;
+    expected_first_pts = url_input ? OBE_CLOCK + 7 * 27000 : 0;
     expected_step = (int64_t)samples_per_frame * OBE_CLOCK * frames_per_pes / 48000;
     const obe_aud_enc_func_t *func = format == AUDIO_MP2 ? &twolame_encoder : &lavc_encoder;
     func->start_encoder(params);
@@ -130,13 +138,15 @@ static void encode_case(const char *name, int format, uint64_t layout, int frame
 int main(void)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
-    encode_case("mono.aac", AUDIO_AAC, AV_CH_LAYOUT_MONO, 1, AAC_LC);
-    encode_case("stereo.aac", AUDIO_AAC, AV_CH_LAYOUT_STEREO, 6, AAC_LC);
-    encode_case("surround.aac", AUDIO_AAC, AV_CH_LAYOUT_5POINT1_BACK, 6, AAC_LC);
-    encode_case("stereo-hev1.aac", AUDIO_AAC, AV_CH_LAYOUT_STEREO, 6, AAC_HE_V1);
-    encode_case("stereo-hev2.aac", AUDIO_AAC, AV_CH_LAYOUT_STEREO, 6, AAC_HE_V2);
-    encode_case("stereo.ac3", AUDIO_AC_3, AV_CH_LAYOUT_STEREO, 2, AAC_LC);
-    encode_case("surround.eac3", AUDIO_E_AC_3, AV_CH_LAYOUT_5POINT1_BACK, 2, AAC_LC);
-    encode_case("stereo.mp2", AUDIO_MP2, AV_CH_LAYOUT_STEREO, 2, AAC_LC);
+    encode_case("mono.aac", AUDIO_AAC, AV_CH_LAYOUT_MONO, 1, AAC_LC, 0);
+    encode_case("stereo.aac", AUDIO_AAC, AV_CH_LAYOUT_STEREO, 6, AAC_LC, 0);
+    encode_case("surround.aac", AUDIO_AAC, AV_CH_LAYOUT_5POINT1_BACK, 6, AAC_LC, 0);
+    encode_case("stereo-hev1.aac", AUDIO_AAC, AV_CH_LAYOUT_STEREO, 6, AAC_HE_V1, 0);
+    encode_case("stereo-hev2.aac", AUDIO_AAC, AV_CH_LAYOUT_STEREO, 6, AAC_HE_V2, 0);
+    encode_case("stereo.ac3", AUDIO_AC_3, AV_CH_LAYOUT_STEREO, 2, AAC_LC, 0);
+    encode_case("surround.eac3", AUDIO_E_AC_3, AV_CH_LAYOUT_5POINT1_BACK, 2, AAC_LC, 0);
+    encode_case("stereo.mp2", AUDIO_MP2, AV_CH_LAYOUT_STEREO, 2, AAC_LC, 0);
+    encode_case("url-stereo.aac", AUDIO_AAC, AV_CH_LAYOUT_STEREO, 6, AAC_LC, 1);
+    encode_case("url-stereo.ac3", AUDIO_AC_3, AV_CH_LAYOUT_STEREO, 2, AAC_LC, 1);
     return 0;
 }
