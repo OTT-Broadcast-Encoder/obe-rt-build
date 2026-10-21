@@ -29,3 +29,5 @@ vs-plugins/vapoursynth-*
 vaapi/libdrm-*.tar.xz
 tests/.build/
 tests/__pycache__/
+webpanel/.state/
+webpanel/__pycache__/
