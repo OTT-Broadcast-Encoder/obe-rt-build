@@ -1,0 +1,23 @@
+# Open-source source snapshot 2026-10-21; local patches listed in LIBRARIES.md
+# directory	commit	upstream
+ffmpeg	946fcce07b6dcd0331c8cc609192aeff5e1924f8	https://git.ffmpeg.org/ffmpeg.git
+x264	368ad15875cf45478ff59cfae2441b1049dbdc91	https://github.com/OTT-Broadcast-Encoder/x264.git
+x265	e444744c03978c1fb4e037168967020cf2648427	https://bitbucket.org/multicoreware/x265_git.git
+fdk-aac	a68a51aa45d86a43c7b228e3d45624af09dcdd8d	https://github.com/mstorsjo/fdk-aac.git
+twolame	bec4069996479aa1aa9d9e7fa32c33135b3a2047	https://github.com/njh/twolame.git
+libyuv	47ba8e2160b71a7cf95c0720cd8944ab771e533e	https://chromium.googlesource.com/libyuv/libyuv
+libzvbi	d3a5ee9f2b047bf16cd1ee5ccf6ec05ee75409d0	https://github.com/zapping-vbi/zvbi.git
+zimg	f819b14e8f39d1282400b0d9543e8ef73c1b2bbd	https://github.com/sekrit-twc/zimg.git
+vapoursynth	dd11a9da6f8e2bb24ab4bb084d44bf01fb93612a	https://github.com/vapoursynth/vapoursynth.git
+libklvanc	b409fc2b0b8051c871f89367a3489f8aa2b6ed37	https://github.com/LTNGlobal-opensource/libklvanc.git
+libklscte35	fa1c07ee08a8f692d691950e3a5a61b4494a6c3b	https://github.com/LTNGlobal-opensource/libklscte35.git
+libltntstools	304f32932f4240f6d4b230749d4cd8c16300b374	https://github.com/LTNGlobal-opensource/libltntstools.git
+libmpegts-obe	1ee8519e79280f9cfbcf65af90cc9dc26345527a	https://github.com/LTNGlobal-opensource/libmpegts-obe.git
+vaapi/libva	710eb465c6277ee2cac3e6948767b01eebe7e77a	https://github.com/intel/libva.git
+vaapi/libva-utils	c3ba9e07e61841f1bc2c9932d957b44e5827a852	https://github.com/intel/libva-utils.git
+vaapi/intel-vaapi-driver	fd727a4e9cb8b2878a1e93d4dddc8dd1c1a4e0ea	https://github.com/intel/intel-vaapi-driver.git
+obe-rt	3fabd16c5b00daef9945a63c9bdfa1c8467ef6f6	https://github.com/OTT-Broadcast-Encoder/obe-rt.git
+blackmagic-sdk	ad4195d3433e2aeeaa42e942bfea378110c9a283	https://github.com/OTT-Broadcast-Encoder/blackmagic-sdk.git
+# x264 official upstream integrated by patch 0007: 0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee
+# libdrm 2.4.134 SHA256: ac5e74d157830eb8bee44c6a6bf3ad49774ef0dd2a72bdad74a8f20308b52a95
+# NDI SDK v4 retained; DeckLink SDK 10.8.5 (OBE), 10.11.2 (FFmpeg) retained

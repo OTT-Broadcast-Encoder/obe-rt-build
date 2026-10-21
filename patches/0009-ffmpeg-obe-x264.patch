@@ -1,0 +1,31 @@
+diff --git a/libavcodec/libx264.c b/libavcodec/libx264.c
+index b688d4f321..d546e73a86 100644
+--- a/libavcodec/libx264.c
++++ b/libavcodec/libx264.c
+@@ -1156,10 +1156,13 @@ static av_cold int X264_init(AVCodecContext *avctx)
+     if (x4->scenechange_threshold >= 0)
+         x4->params.i_scenecut_threshold = x4->scenechange_threshold;
+ 
+-    if (avctx->qmin >= 0)
+-        x4->params.rc.i_qp_min          = avctx->qmin;
+-    if (avctx->qmax >= 0)
+-        x4->params.rc.i_qp_max          = avctx->qmax;
++    /* The OBE x264 fork exposes separate I/P/B quantizer limits. */
++    for (int i = 0; i < 3; i++) {
++        if (avctx->qmin >= 0)
++            x4->params.rc.i_qp_min[i] = avctx->qmin;
++        if (avctx->qmax >= 0)
++            x4->params.rc.i_qp_max[i] = avctx->qmax;
++    }
+     if (avctx->max_qdiff >= 0)
+         x4->params.rc.i_qp_step         = avctx->max_qdiff;
+     if (avctx->qblur >= 0)
+@@ -1293,7 +1296,7 @@ static av_cold int X264_init(AVCodecContext *avctx)
+         x4->params.i_bframe_adaptive = x4->b_frame_strategy;
+ 
+     if (x4->profile)
+-        if (x264_param_apply_profile(&x4->params, x4->profile) < 0) {
++        if (x264_param_apply_profile(&x4->params, x4->profile, NULL) < 0) {
+             int i;
+             av_log(avctx, AV_LOG_ERROR, "Error setting profile %s.\n", x4->profile);
+             av_log(avctx, AV_LOG_INFO, "Possible profiles:");

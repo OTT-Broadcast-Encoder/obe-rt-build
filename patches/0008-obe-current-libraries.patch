@@ -1,0 +1,1191 @@
+diff --git a/common/common.h b/common/common.h
+index 050e0bc..872c7e8 100644
+--- a/common/common.h
++++ b/common/common.h
+@@ -32,6 +32,8 @@
+ #include <libavutil/pixfmt.h>
+ #include <libavutil/imgutils.h>
+ #include <libavutil/common.h>
++#include <libavutil/cpu.h>
++#include "common/ffmpeg.h"
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+diff --git a/common/common_lavc.c b/common/common_lavc.c
+index 8cbe610..52dd7da 100644
+--- a/common/common_lavc.c
++++ b/common/common_lavc.c
+@@ -56,7 +56,6 @@ int obe_get_buffer2(AVCodecContext *codec, AVFrame *pic, int flags)
+ 	pic->buf[1] = av_buffer_create(pic->data[1], pic->linesize[1] * h / 4, _buffer_default_free, NULL, 0);
+ 	pic->buf[2] = av_buffer_create(pic->data[2], pic->linesize[2] * h / 4, _buffer_default_free, NULL, 0);
+ 
+-	pic->reordered_opaque = codec->reordered_opaque;
+ 	pic->pts = AV_NOPTS_VALUE;
+ 
+ 	return 0;
+diff --git a/common/ffmpeg.h b/common/ffmpeg.h
+new file mode 100644
+index 0000000..4ccf019
+--- /dev/null
++++ b/common/ffmpeg.h
+@@ -0,0 +1,19 @@
++#ifndef OBE_COMMON_FFMPEG_H
++#define OBE_COMMON_FFMPEG_H
++
++#include <libavutil/channel_layout.h>
++#include <libavutil/opt.h>
++
++/* OBE keeps channel masks in its public structures. Convert only at the
++ * libavutil boundary; FFmpeg 9 no longer accepts integer layout options. */
++static inline int obe_set_channel_layout(void *obj, const char *name, uint64_t mask)
++{
++    AVChannelLayout layout = {AV_CHANNEL_ORDER_UNSPEC};
++    int ret = av_channel_layout_from_mask(&layout, mask);
++    if (ret >= 0)
++        ret = av_opt_set_chlayout(obj, name, &layout, 0);
++    av_channel_layout_uninit(&layout);
++    return ret;
++}
++
++#endif
+diff --git a/common/lavc.h b/common/lavc.h
+index 1da4407..09c88c5 100644
+--- a/common/lavc.h
++++ b/common/lavc.h
+@@ -29,7 +29,6 @@
+ int obe_get_buffer2(AVCodecContext *codec, AVFrame *pic, int flags);
+ void obe_release_buffer( AVCodecContext *codec, AVFrame *pic );
+ int obe_reget_buffer( AVCodecContext *codec, AVFrame *pic );
+-int obe_lavc_lockmgr( void **mutex, enum AVLockOp op );
+ 
+ #if 0
+ #define obe_free_packet( pkt )\
+diff --git a/encoders/audio/lavc/lavc.c b/encoders/audio/lavc/lavc.c
+index bdb3d2f..29afebb 100644
+--- a/encoders/audio/lavc/lavc.c
++++ b/encoders/audio/lavc/lavc.c
+@@ -77,7 +77,7 @@ static const lavc_encoder_t lavc_encoders[] =
+ /* Function has zero ownership over the lifetime of the packet, so
+  * don't unref or free.
+  */
+-static void processCodecOutput(struct context_s *ctx, AVPacket *pkt, AVFifoBuffer *fifo)
++static int processCodecOutput(struct context_s *ctx, AVPacket *pkt, AVFifo *fifo)
+ {
+     obe_coded_frame_t *coded_frame;
+ 
+@@ -85,30 +85,24 @@ static void processCodecOutput(struct context_s *ctx, AVPacket *pkt, AVFifoBuffe
+     printf(MODULE "codec output %d bytes\n", pkt->size);
+ #endif
+ 
+-    if (av_fifo_realloc2(fifo, av_fifo_size(fifo) + pkt->size) < 0) {
+-        char msg[128];
+-        sprintf(msg, MODULE "malloc av_fifo_realloc2(?, %d + %d)\n", av_fifo_size(fifo), pkt->size);
+-        fprintf(stderr, "%s\n", msg);
+-        syslog(LOG_ERR, "%s", msg);
+-        return;
+-    }
+-
+     /* Write the output codec data into a fifo, because we want to make downstream packets
+      * of exactly N frames (frames_per_pes).
+      */
+-    av_fifo_generic_write(fifo, pkt->data, pkt->size, NULL);
++    int ret = av_fifo_write(fifo, pkt->data, pkt->size);
++    if (ret < 0)
++        return ret;
+ 
+     if (ctx->num_frames != ctx->enc_params->frames_per_pes) {
+         /* Buffer enough codec content frames, to file the desired pes size. */
+-        return;
++        return 0;
+     }
+ 
+     coded_frame = new_coded_frame(ctx->encoder->output_stream_id, ctx->total_size_bytes);
+     if (!coded_frame)
+-        return;
++        return AVERROR(ENOMEM);
+ 
+     //printf("Fifo read of %d\n", ctx->total_size_bytes);
+-    av_fifo_generic_read(fifo, coded_frame->data, ctx->total_size_bytes, NULL);
++    av_fifo_read(fifo, coded_frame->data, ctx->total_size_bytes);
+     coded_frame->pts = ctx->cur_pts;
+ 
+     /* Fixup the clock for 10.11.2, due to an audio clocking bug.
+@@ -220,6 +214,7 @@ static void processCodecOutput(struct context_s *ctx, AVPacket *pkt, AVFifoBuffe
+ 
+     ctx->cur_pts += ctx->pts_increment;
+     ctx->total_size_bytes = ctx->num_frames = 0;
++    return 0;
+ }
+ 
+ static void *aac_start_encoder(void *ptr)
+@@ -234,9 +229,9 @@ static void *aac_start_encoder(void *ptr)
+ 
+     obe_raw_frame_t *raw_frame;
+     int i, frame_size, ret;
+-    AVFifoBuffer *out_fifo_compressed = NULL;
++    AVFifo *out_fifo_compressed = NULL;
+     struct SwrContext *avr = NULL;
+-    AVPacket pkt;
++    AVPacket pkt = {0};
+     AVCodecContext *codec = NULL;
+     AVFrame *frame = NULL;
+     AVDictionary *opts = NULL;
+@@ -269,7 +264,7 @@ static void *aac_start_encoder(void *ptr)
+         lavc_encoders[i].display_name,
+         lavc_encoders[i].lavc_name);
+ 
+-    AVCodec *enc = NULL;
++    const AVCodec *enc = NULL;
+     if (lavc_encoders[i].lavc_name == AV_CODEC_ID_AC3) {
+         ctx->frameLengthTicks = 864000; /* 32ms = 32 * 90 * 300 */
+         enc = avcodec_find_encoder(lavc_encoders[i].lavc_name);
+@@ -296,7 +291,11 @@ static void *aac_start_encoder(void *ptr)
+     }
+     ctx->encoderMode = lavc_encoders[i].lavc_name;
+ 
+-    if( enc->sample_fmts[0] == -1 )
++    const enum AVSampleFormat *sample_fmts = NULL;
++    int num_sample_fmts = 0;
++    ret = avcodec_get_supported_config(codec, enc, AV_CODEC_CONFIG_SAMPLE_FORMAT,
++                                      0, (const void **)&sample_fmts, &num_sample_fmts);
++    if( ret < 0 || !sample_fmts || !num_sample_fmts )
+     {
+         fprintf(stderr, MODULE "No valid sample formats\n");
+         goto finish;
+@@ -304,18 +303,18 @@ static void *aac_start_encoder(void *ptr)
+ 
+     codec->sample_rate = ctx->enc_params->sample_rate;
+     codec->bit_rate = ctx->stream->bitrate * 1000;
+-    codec->sample_fmt = enc->sample_fmts[0];
++    codec->sample_fmt = sample_fmts[0];
+     printf(MODULE "codec->sample_fmt = %d\n", codec->sample_fmt);
+     printf(MODULE "codec->bit_rate   = %" PRIi64 "\n", codec->bit_rate);
+     printf(MODULE "long_name         = %s\n", enc->long_name);
+     printf(MODULE "dialnorm          = %d\n", ctx->enc_params->dialnorm);
+-    codec->channels = av_get_channel_layout_nb_channels(ctx->stream->channel_layout);
+-    codec->channel_layout = ctx->stream->channel_layout;
++    if (av_channel_layout_from_mask(&codec->ch_layout, ctx->stream->channel_layout) < 0)
++        goto finish;
+     codec->time_base.num = 1;
+     codec->time_base.den = OBE_CLOCK;
+-    codec->profile = ctx->stream->aac_opts.aac_profile == AAC_HE_V2 ? FF_PROFILE_AAC_HE_V2 :
+-                     ctx->stream->aac_opts.aac_profile == AAC_HE_V1 ? FF_PROFILE_AAC_HE :
+-                     FF_PROFILE_AAC_LOW;
++    codec->profile = ctx->stream->aac_opts.aac_profile == AAC_HE_V2 ? AV_PROFILE_AAC_HE_V2 :
++                     ctx->stream->aac_opts.aac_profile == AAC_HE_V1 ? AV_PROFILE_AAC_HE :
++                     AV_PROFILE_AAC_LOW;
+ 
+     snprintf( is_latm, sizeof(is_latm), "%i", ctx->stream->aac_opts.latm_output );
+     av_dict_set( &opts, "latm", is_latm, 0 );
+@@ -334,19 +333,19 @@ static void *aac_start_encoder(void *ptr)
+         goto finish;
+     }
+ 
+-    av_opt_set_int( avr, "in_channel_layout",    codec->channel_layout, 0 );
++    av_opt_set_chlayout(avr, "in_chlayout", &codec->ch_layout, 0);
+     av_opt_set_int( avr, "in_sample_rate",       ctx->enc_params->sample_rate, 0 );
+     av_opt_set_sample_fmt( avr, "in_sample_fmt", ctx->enc_params->input_sample_format, 0 );
+ 
+-    av_opt_set_int( avr, "out_channel_layout",    codec->channel_layout, 0 );
++    av_opt_set_chlayout(avr, "out_chlayout", &codec->ch_layout, 0);
+     av_opt_set_int( avr, "out_sample_rate",       ctx->enc_params->sample_rate, 0 );
+     av_opt_set_sample_fmt( avr, "out_sample_fmt", codec->sample_fmt,     0 );
+     av_opt_set_int( avr, "dither_method",         SWR_DITHER_TRIANGULAR, 0 );
+ 
+-    printf(MODULE "in_channel_layout  = %" PRIi64 "\n", codec->channel_layout);
++    printf(MODULE "in_channel_layout  = %" PRIu64 "\n", codec->ch_layout.u.mask);
+     printf(MODULE "in_sample_fmt      = %d %s\n", ctx->enc_params->input_sample_format, av_get_sample_fmt_name(ctx->enc_params->input_sample_format));
+     printf(MODULE "in_sample_rate     = %d\n", ctx->enc_params->sample_rate);
+-    printf(MODULE "out_channel_layout = %" PRIi64 "\n", codec->channel_layout);
++    printf(MODULE "out_channel_layout = %" PRIu64 "\n", codec->ch_layout.u.mask);
+     printf(MODULE "out_sample_fmt     = %d %s\n", codec->sample_fmt, av_get_sample_fmt_name(codec->sample_fmt));
+     printf(MODULE "out_sample_rate    = %d\n", ctx->enc_params->sample_rate);
+ 
+@@ -373,13 +372,13 @@ static void *aac_start_encoder(void *ptr)
+     /* NB: libfdk-aac already doubles the frame size appropriately */
+     ctx->pts_increment = (double)codec->frame_size * OBE_CLOCK * ctx->enc_params->frames_per_pes / ctx->enc_params->sample_rate;
+ 
+-    ctx->audio_pcm_fifo = av_audio_fifo_alloc(codec->sample_fmt, codec->channels, 8000);
++    ctx->audio_pcm_fifo = av_audio_fifo_alloc(codec->sample_fmt, codec->ch_layout.nb_channels, 8000);
+     if (!ctx->audio_pcm_fifo) {
+         fprintf(stderr, MODULE "audio fifo alloc failed\n");
+         goto finish;
+     }
+ 
+-    out_fifo_compressed = av_fifo_alloc(frame_size);
++    out_fifo_compressed = av_fifo_alloc2(frame_size, 1, AV_FIFO_FLAG_AUTO_GROW);
+     if (!out_fifo_compressed) {
+         fprintf(stderr, MODULE "compressed fifo alloc failed\n");
+         goto finish;
+@@ -391,13 +390,17 @@ static void *aac_start_encoder(void *ptr)
+         fprintf(stderr, MODULE "Could not allocate frame\n");
+         goto finish;
+     }
++    frame->format = codec->sample_fmt;
++    frame->sample_rate = codec->sample_rate;
++    if (av_channel_layout_copy(&frame->ch_layout, &codec->ch_layout) < 0)
++        goto finish;
+ 
+ /* AAC has 1 frame per pes in lowest latency mode, frame size 1024. */
+ /* AAC has 6 frame per pes in normal latency mode, frame size 2048. */
+     printf(MODULE "frames per pes     = %d\n", ctx->enc_params->frames_per_pes);
+     printf(MODULE "dst_linesize       = %d\n", dst_linesize);
+     printf(MODULE "codec->frame_size  = %d\n", codec->frame_size);
+-    printf(MODULE "codec->channels    = %d\n", codec->channels);
++    printf(MODULE "codec channels     = %d\n", codec->ch_layout.nb_channels);
+     printf(MODULE "codec->sample_fmt  = %d\n", codec->sample_fmt);
+     printf(MODULE "bytes_per_sample   = %d\n", av_get_bytes_per_sample(codec->sample_fmt));
+     printf(MODULE "is_planar          = %d\n", av_sample_fmt_is_planar(codec->sample_fmt));
+@@ -429,7 +432,7 @@ static void *aac_start_encoder(void *ptr)
+                 ctx->encoder->output_stream_id,
+                 raw_frame->avfm.audio_pts,
+                 raw_frame->audio_frame.linesize,
+-                av_get_channel_layout_nb_channels(raw_frame->audio_frame.channel_layout),
++                av_popcount64(raw_frame->audio_frame.channel_layout),
+                 raw_frame->audio_frame.num_samples,
+                 raw_frame->avfm.audio_pts - ctx->avfm.audio_pts);
+         }
+@@ -458,9 +461,12 @@ static void *aac_start_encoder(void *ptr)
+                 ctx->cur_pts);
+ 
+             /* Drain the conversion fifos else we induce drift. */
+-            av_fifo_drain(out_fifo_compressed, av_fifo_size(out_fifo_compressed));
++            av_fifo_reset2(out_fifo_compressed);
+             av_audio_fifo_drain(ctx->audio_pcm_fifo, av_audio_fifo_size(ctx->audio_pcm_fifo));
+-            swr_drop_output(avr, 65535);
++            /* Reset buffered conversion state without dropping future input. */
++            swr_close(avr);
++            if (swr_init(avr) < 0)
++                goto finish;
+             ctx->num_frames = 0;
+             ctx->total_size_bytes = 0;
+         }
+@@ -495,7 +501,7 @@ static void *aac_start_encoder(void *ptr)
+ 		    newlinesize = raw_frame->audio_frame.linesize * 4;
+ 	    }
+         if (av_samples_alloc(audio_planes, NULL,
+-                av_get_channel_layout_nb_channels(raw_frame->audio_frame.channel_layout),
++                av_popcount64(raw_frame->audio_frame.channel_layout),
+                 newlinesize, codec->sample_fmt, 0) < 0) {
+             fprintf(stderr, MODULE "Could not allocate audio samples\n");
+             goto finish;
+@@ -515,7 +521,7 @@ static void *aac_start_encoder(void *ptr)
+                 g_audio_cf_debug,
+                 ctx->encoder->output_stream_id,
+                 audioFramesDQ,
+-                av_get_channel_layout_nb_channels(raw_frame->audio_frame.channel_layout),
++                av_popcount64(raw_frame->audio_frame.channel_layout),
+                 raw_frame->audio_frame.num_samples);
+             printf("Creating %s\n", fn);
+             FILE *fh = fopen(fn, "wb");
+@@ -550,7 +556,7 @@ static void *aac_start_encoder(void *ptr)
+                 g_audio_cf_debug,
+                 ctx->encoder->output_stream_id,
+                 audioFramesDQ,
+-                av_get_channel_layout_nb_channels(raw_frame->audio_frame.channel_layout),
++                av_popcount64(raw_frame->audio_frame.channel_layout),
+                 raw_frame->audio_frame.num_samples);
+             printf("Creating %s\n", fn);
+             FILE *fh = fopen(fn, "wb");
+@@ -566,9 +572,9 @@ static void *aac_start_encoder(void *ptr)
+ #endif
+ 
+         /* Push the converted samples into the audio pcm fifo. */
+-        ret = av_audio_fifo_write(ctx->audio_pcm_fifo, (void **)audio_planes, raw_frame->audio_frame.num_samples);
+-        if (ret != raw_frame->audio_frame.num_samples) {
+-            fprintf(stderr, MODULE "Unable to write to audio fifo, ret = %d - should be %d\n", ret, raw_frame->audio_frame.num_samples);
++        ret = av_audio_fifo_write(ctx->audio_pcm_fifo, (void **)audio_planes, count);
++        if (ret != count) {
++            fprintf(stderr, MODULE "Unable to write to audio fifo, ret = %d - should be %d\n", ret, count);
+             exit(1);
+         }
+ 
+@@ -590,7 +596,7 @@ static void *aac_start_encoder(void *ptr)
+ 		exit(1);
+             }
+ 
+-            av_init_packet(&pkt);
++            av_packet_unref(&pkt);
+             pkt.data = NULL;
+             pkt.size = 0;
+ 
+@@ -616,8 +622,12 @@ static void *aac_start_encoder(void *ptr)
+                ctx->total_size_bytes += pkt.size;
+                ctx->num_frames++;
+ 
+-               processCodecOutput(ctx, &pkt, out_fifo_compressed);
++               ret = processCodecOutput(ctx, &pkt, out_fifo_compressed);
+                av_packet_unref(&pkt);
++               if (ret < 0) {
++                   fprintf(stderr, MODULE "Could not buffer compressed audio\n");
++                   goto finish;
++               }
+             }
+         }
+ 
+@@ -638,15 +648,14 @@ finish:
+         av_audio_fifo_free(ctx->audio_pcm_fifo);
+ 
+     if( out_fifo_compressed )
+-        av_fifo_free( out_fifo_compressed );
++        av_fifo_freep2( &out_fifo_compressed );
+ 
+     if (avr)
+         swr_free(&avr);
+ 
+     if( codec )
+     {
+-        avcodec_close( codec );
+-        av_free( codec );
++        avcodec_free_context(&codec);
+     }
+ 
+     aud_enc_params_free(ctx->enc_params);
+diff --git a/encoders/audio/mp2/twolame.c b/encoders/audio/mp2/twolame.c
+index 15176df..ee524b0 100644
+--- a/encoders/audio/mp2/twolame.c
++++ b/encoders/audio/mp2/twolame.c
+@@ -104,7 +104,7 @@ static void *start_encoder_mp2( void *ptr )
+     float *audio_buf = NULL;
+     uint8_t *output_buf = NULL;
+     struct SwrContext *avr = NULL;
+-    AVFifoBuffer *fifo = NULL;
++    AVFifo *fifo = NULL;
+ 
+ #if REPORT_AUDIO_DISCONTINUITIES
+     int64_t lastOutputFramePTS = 0; /* Last pts we output, we'll comare against future version to warn for discontinuities. */
+@@ -129,7 +129,7 @@ static void *start_encoder_mp2( void *ptr )
+     twolame_set_out_samplerate( tl_opts, enc_params->sample_rate );
+     twolame_set_copyright( tl_opts, 1 );
+     twolame_set_original( tl_opts, 1 );
+-    twolame_set_num_channels( tl_opts, av_get_channel_layout_nb_channels( stream->channel_layout ) );
++    twolame_set_num_channels( tl_opts, av_popcount64( stream->channel_layout ) );
+     twolame_set_error_protection( tl_opts, 1 );
+     if( stream->channel_layout == AV_CH_LAYOUT_STEREO )
+         twolame_set_mode( tl_opts, stream->mp2_mode-1 );
+@@ -157,10 +157,10 @@ static void *start_encoder_mp2( void *ptr )
+         goto end;
+     }
+ 
+-    av_opt_set_int( avr, "in_channel_layout",   stream->channel_layout,  0 );
++    obe_set_channel_layout(avr, "in_chlayout", stream->channel_layout);
+     av_opt_set_int( avr, "in_sample_fmt",       enc_params->input_sample_format, 0 );
+     av_opt_set_int( avr, "in_sample_rate",      enc_params->sample_rate, 0 );
+-    av_opt_set_int( avr, "out_channel_layout",  stream->channel_layout, 0 );
++    obe_set_channel_layout(avr, "out_chlayout", stream->channel_layout);
+     av_opt_set_int( avr, "out_sample_fmt",      AV_SAMPLE_FMT_FLT,   0 );
+     av_opt_set_int( avr, "dither_method",       SWR_DITHER_TRIANGULAR, 0 );
+     av_opt_set_int( avr, "out_sample_rate",     enc_params->sample_rate, 0 );
+@@ -172,7 +172,7 @@ static void *start_encoder_mp2( void *ptr )
+     }
+ 
+     /* Setup the output FIFO */
+-    fifo = av_fifo_alloc( frame_size );
++    fifo = av_fifo_alloc2( frame_size, 1, AV_FIFO_FLAG_AUTO_GROW );
+     if( !fifo )
+     {
+         fprintf( stderr, "Malloc failed\n" );
+@@ -229,8 +229,10 @@ raw_frame->avfm.audio_pts, avfm.audio_pts);
+                 cur_pts);
+ 
+             /* Drain the conversion fifos else we induce drift. */
+-            av_fifo_drain(fifo, av_fifo_size(fifo));
+-            swr_drop_output(avr, 65535);
++            av_fifo_reset2(fifo);
++            swr_close(avr);
++            if (swr_init(avr) < 0)
++                goto end;
+ 
+             output_size = twolame_encode_flush(tl_opts, output_buf, MP2_AUDIO_BUFFER_SIZE);
+         }
+@@ -254,21 +256,22 @@ raw_frame->avfm.audio_pts, avfm.audio_pts);
+ #endif
+ 
+         /* Allocate the output buffer */
+-        if( av_samples_alloc( (uint8_t**)&audio_buf, &linesize, av_get_channel_layout_nb_channels( raw_frame->audio_frame.channel_layout ),
++        if( av_samples_alloc( (uint8_t**)&audio_buf, &linesize, av_popcount64( raw_frame->audio_frame.channel_layout ),
+                               raw_frame->audio_frame.linesize, AV_SAMPLE_FMT_FLT, 0 ) < 0 )
+         {
+             syslog( LOG_ERR, "Malloc failed\n" );
+             goto end;
+         }
+ 
+-        if (swr_convert(avr, (uint8_t **)&audio_buf, raw_frame->audio_frame.num_samples, (const uint8_t **)raw_frame->audio_frame.audio_data,
+-                                raw_frame->audio_frame.num_samples) < 0)
++        int converted_samples = swr_convert(avr, (uint8_t **)&audio_buf, raw_frame->audio_frame.num_samples,
++                    (const uint8_t **)raw_frame->audio_frame.audio_data, raw_frame->audio_frame.num_samples);
++        if (converted_samples < 0)
+         {
+             syslog( LOG_ERR, "[twolame] Sample format conversion failed\n" );
+             break;
+         }
+ 
+-        output_size = twolame_encode_buffer_float32_interleaved( tl_opts, audio_buf, raw_frame->audio_frame.num_samples, output_buf, MP2_AUDIO_BUFFER_SIZE );
++        output_size = twolame_encode_buffer_float32_interleaved( tl_opts, audio_buf, converted_samples, output_buf, MP2_AUDIO_BUFFER_SIZE );
+ 
+         if( output_size < 0 )
+         {
+@@ -284,15 +287,13 @@ raw_frame->avfm.audio_pts, avfm.audio_pts);
+         raw_frame->release_frame( raw_frame );
+         remove_from_queue( &encoder->queue );
+ 
+-        if( av_fifo_realloc2( fifo, av_fifo_size( fifo ) + output_size ) < 0 )
++        if( av_fifo_write( fifo, output_buf, output_size ) < 0 )
+         {
+             syslog( LOG_ERR, "Malloc failed\n" );
+             break;
+         }
+ 
+-        av_fifo_generic_write( fifo, output_buf, output_size, NULL );
+-
+-        while( av_fifo_size( fifo ) >= frame_size )
++        while( av_fifo_can_read( fifo ) >= frame_size )
+         {
+             coded_frame = new_coded_frame( encoder->output_stream_id, frame_size );
+             if( !coded_frame )
+@@ -300,7 +301,7 @@ raw_frame->avfm.audio_pts, avfm.audio_pts);
+                 syslog( LOG_ERR, "Malloc failed\n" );
+                 goto end;
+             }
+-            av_fifo_generic_read( fifo, coded_frame->data, frame_size, NULL );
++            av_fifo_read( fifo, coded_frame->data, frame_size );
+             memcpy(&coded_frame->avfm, &avfm, sizeof(avfm));
+ 
+             /* 648000 27MHz ticks equates to 24ms.
+@@ -388,7 +389,7 @@ end:
+         swr_free( &avr );
+ 
+     if( fifo )
+-        av_fifo_free( fifo );
++        av_fifo_freep2( &fifo );
+ 
+     if( tl_opts )
+         twolame_close( &tl_opts );
+diff --git a/encoders/video/avc/avcodec.c b/encoders/video/avc/avcodec.c
+index af342a7..1aaf376 100644
+--- a/encoders/video/avc/avcodec.c
++++ b/encoders/video/avc/avcodec.c
+@@ -174,7 +174,7 @@ static size_t _deliver_nals(struct context_s *ctx, AVPacket *pkt, obe_raw_frame_
+ 		/* For each nal, lookup and prepare a list of found NAL types. */
+ 		switch (obe_core_encoder_get_stream_format(ctx->encoder)) {
+ 		case VIDEO_HEVC_GPU_VAAPI_AVCODEC:
+-			foundNals = ltn_nal_hevc_findNalTypes(pkt->data, pkt->size);
++			foundNals = ltn_nal_h265_findNalTypes(pkt->data, pkt->size);
+ 			break;
+ 		default:
+ 			/* No requirement to support */
+@@ -473,7 +473,7 @@ printf("mode undefined\n");
+ 
+ static int _encode_frame(struct context_s *ctx, obe_raw_frame_t *rf, AVFrame *frame)
+ {
+-	AVPacket enc_pkt;
++	AVPacket enc_pkt = {0};
+ 
+ #if 0
+ 	/* TODO: Handle SEI / AFD / User payloads. */
+@@ -529,7 +529,7 @@ static int _encode_frame(struct context_s *ctx, obe_raw_frame_t *rf, AVFrame *fr
+ 	}
+ 
+ 	while (ret >= 0) {
+-		av_init_packet(&enc_pkt);
++		av_packet_unref(&enc_pkt);
+ 		enc_pkt.data = NULL;
+ 		enc_pkt.size = 0;
+ 
+@@ -609,8 +609,12 @@ static void *avc_gpu_avcodec_start_encoder(void *ptr)
+ 	}
+ 
+ 	printf(MESSAGE_PREFIX "Support pixel formats:\n");
+-	for (int i = 0; ctx->codec->pix_fmts[i] != AV_PIX_FMT_NONE; i++)
+-		printf("fmt[%d] = %s\n", i, av_get_pix_fmt_name(ctx->codec->pix_fmts[i]));
++	const enum AVPixelFormat *pix_fmts = NULL;
++	int num_pix_fmts = 0;
++	avcodec_get_supported_config(NULL, ctx->codec, AV_CODEC_CONFIG_PIX_FORMAT,
++		0, (const void **)&pix_fmts, &num_pix_fmts);
++	for (int i = 0; i < num_pix_fmts; i++)
++		printf("fmt[%d] = %s\n", i, av_get_pix_fmt_name(pix_fmts[i]));
+ 
+ 	ctx->c = avcodec_alloc_context3(ctx->codec);
+ 	if (!ctx->c) {
+@@ -721,7 +725,7 @@ static void *avc_gpu_avcodec_start_encoder(void *ptr)
+ 		}
+ 
+ 		frame->pts = rf->avfm.audio_pts;
+-		frame->key_frame = 1;
++		frame->flags |= AV_FRAME_FLAG_KEY;
+ 		frame->pict_type = AV_PICTURE_TYPE_I;
+ 
+ 		//struct userdata_s *ud = userdata_calloc();
+@@ -774,11 +778,11 @@ static void *avc_gpu_avcodec_start_encoder(void *ptr)
+ 
+                         /* This costs a few percent of a cpu */
+                         I420ToNV12(
+-                                rf->img.plane[0], ctx->frame_width,
+-                                rf->img.plane[1], ctx->frame_width / 4,
+-                                rf->img.plane[2], ctx->frame_width / 4,
+-                                dst_y, ctx->frame_width,
+-                                dst_uv, ctx->frame_width / 2,
++                                rf->img.plane[0], rf->img.stride[0],
++                                rf->img.plane[1], rf->img.stride[1],
++                                rf->img.plane[2], rf->img.stride[2],
++                                dst_y, frame->linesize[0],
++                                dst_uv, frame->linesize[1],
+                                 ctx->frame_width, ctx->frame_height);
+ 
+ 			ret = av_hwframe_transfer_data(hw_frame, frame, 0);
+diff --git a/encoders/video/avc/vaapi.c b/encoders/video/avc/vaapi.c
+index 629df04..28dd61e 100644
+--- a/encoders/video/avc/vaapi.c
++++ b/encoders/video/avc/vaapi.c
+@@ -2770,11 +2770,11 @@ static void *avc_vaapi_start_encoder( void *ptr )
+ 
+ 			/* This costs a few percent of a cpu */
+ 			I420ToNV12(
+-				rf->img.plane[0], ctx->frame_width,
+-				rf->img.plane[1], ctx->frame_width / 4,
+-				rf->img.plane[2], ctx->frame_width / 4,
++				rf->img.plane[0], rf->img.stride[0],
++				rf->img.plane[1], rf->img.stride[1],
++				rf->img.plane[2], rf->img.stride[2],
+ 				dst_y, ctx->frame_width,
+-				dst_uv, ctx->frame_width / 2,
++				dst_uv, ctx->frame_width,
+ 				ctx->frame_width, ctx->frame_height);
+ 
+ #if SEI_TIMESTAMPING
+diff --git a/encoders/video/hevc/vaapi-hevc.c b/encoders/video/hevc/vaapi-hevc.c
+index 51201e6..3716ace 100644
+--- a/encoders/video/hevc/vaapi-hevc.c
++++ b/encoders/video/hevc/vaapi-hevc.c
+@@ -387,11 +387,11 @@ static void *hevc_vaapi_start_encoder( void *ptr )
+ 			/* VAAPI wants the frame in NV12 natively, so perform a csc */
+ 			/* This costs a few percent of a cpu */
+ 			I420ToNV12(
+-				rf->img.plane[0], ctx->frame_width,
+-				rf->img.plane[1], ctx->frame_width / 4,
+-				rf->img.plane[2], ctx->frame_width / 4,
++				rf->img.plane[0], rf->img.stride[0],
++				rf->img.plane[1], rf->img.stride[1],
++				rf->img.plane[2], rf->img.stride[2],
+ 				dst_y, ctx->frame_width,
+-				dst_uv, ctx->frame_width / 2,
++				dst_uv, ctx->frame_width,
+ 				ctx->frame_width, ctx->frame_height);
+ 
+ #if SEI_TIMESTAMPING
+diff --git a/filters/audio/audio.c b/filters/audio/audio.c
+index f9cc581..c496097 100644
+--- a/filters/audio/audio.c
++++ b/filters/audio/audio.c
+@@ -189,7 +189,7 @@ static void *start_filter_audio( void *ptr )
+         if (output_stream->stream_format == AUDIO_AC_3_BITSTREAM)
+             continue; /* Ignore downstream AC3 bitstream encoders */
+ 
+-        num_channels = av_get_channel_layout_nb_channels(output_stream->channel_layout);
++        num_channels = av_popcount64(output_stream->channel_layout);
+         output_stream->audioGain = 0.0;
+ 
+         if ((num_channels == 2 || num_channels == 6) && strlen(output_stream->gain_db) > 0) {
+@@ -242,7 +242,7 @@ static void *start_filter_audio( void *ptr )
+                 continue; /* Ignore non-pcm frames */
+ 
+ //printf("output_stream->stream_format = %d other\n", output_stream->stream_format);
+-            num_channels = av_get_channel_layout_nb_channels( output_stream->channel_layout );
++            num_channels = av_popcount64( output_stream->channel_layout );
+ 
+ #if LOCAL_DEBUG
+             printf("%s() encoder#%d: output_stream->sdi_audio_pair %d, num_channels %d\n", __func__, i,
+diff --git a/filters/video/convert_jpeg.c b/filters/video/convert_jpeg.c
+index c8dbc29..69c24cf 100644
+--- a/filters/video/convert_jpeg.c
++++ b/filters/video/convert_jpeg.c
+@@ -38,7 +38,7 @@ int filter_compress_jpg(struct filter_compress_ctx *ctx, obe_raw_frame_t *rf)
+ 
+ 	ctx->lastFrameTime = now;
+ 
+-	AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
++	const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
+ 	if (!codec) {
+ 		printf("Codec not found\n");
+ 		exit(1);
+@@ -78,8 +78,8 @@ int filter_compress_jpg(struct filter_compress_ctx *ctx, obe_raw_frame_t *rf)
+ 		exit(1);
+ 	}
+ 
+-	AVPacket pkt;
+-	av_init_packet(&pkt);
++	AVPacket pkt = {0};
++	av_packet_unref(&pkt);
+ 	pkt.data = NULL;
+ 	pkt.size = 0;
+ 
+@@ -121,8 +121,7 @@ int filter_compress_jpg(struct filter_compress_ctx *ctx, obe_raw_frame_t *rf)
+ 		av_packet_unref(&pkt);
+ 	}
+ 
+-	avcodec_close(c);
+-	av_free(c);
++	avcodec_free_context(&c);
+ 	av_freep(&frame->data[0]);
+ 	av_frame_free(&frame);
+ 
+diff --git a/filters/video/dither.h b/filters/video/dither.h
+index 580c539..db4ad61 100644
+--- a/filters/video/dither.h
++++ b/filters/video/dither.h
+@@ -22,7 +22,9 @@
+ #ifndef OBE_FILTERS_DITHER_H
+ #define OBE_FILTERS_DITHER_H
+ 
+-DECLARE_ALIGNED(16, const uint16_t, obe_dithers)[8][8] =
++#include <stdalign.h>
++
++alignas(16) const uint16_t obe_dithers[8][8] =
+ {
+     { 1,  2,  1,  2,  1,  2,  1,  2 },
+     { 3,  0,  3,  0,  3,  0,  3,  0 },
+diff --git a/filters/video/vapoursynth_vf.h b/filters/video/vapoursynth_vf.h
+index 8290eb9..726ef2e 100644
+--- a/filters/video/vapoursynth_vf.h
++++ b/filters/video/vapoursynth_vf.h
+@@ -1,10 +1,10 @@
+ #ifndef OBE_FILTER_VIDEO_VAPOURSYNTH_VF_H
+ #define OBE_FILTER_VIDEO_VAPOURSYNTH_VF_H
+ 
+-#include <vapoursynth/VapourSynth4.h>
+-#include <vapoursynth/VSConstants4.h>
+-#include <vapoursynth/VSHelper4.h>
+-#include <vapoursynth/VSScript4.h>
++#include <VapourSynth4.h>
++#include <VSConstants4.h>
++#include <VSHelper4.h>
++#include <VSScript4.h>
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/input/avfoundation/avfoundation.cpp b/input/avfoundation/avfoundation.cpp
+index 374168f..7bd664f 100644
+--- a/input/avfoundation/avfoundation.cpp
++++ b/input/avfoundation/avfoundation.cpp
+@@ -99,7 +99,7 @@ typedef struct
+ 
+ 
+ 	/* AVCodec for V210 conversion. */
+-	AVCodec         *dec;
++	const AVCodec         *dec;
+ 	AVCodecContext  *codec;
+ 	/* End: AVCodec for V210 conversion. */
+ 
+@@ -184,8 +184,7 @@ static void close_device(avfoundation_opts_t *opts)
+ 	}
+ 
+ 	if (ctx->codec) {
+-		avcodec_close(ctx->codec);
+-		av_free(ctx->codec);
++		avcodec_free_context(&ctx->codec);
+ 	}
+ 
+ 	if (ctx->avr)
+@@ -232,10 +231,10 @@ static int open_device(avfoundation_opts_t *opts)
+ 
+ 	/* Give libavresample our custom audio channel map */
+ 	printf(MODULE_PREFIX "audio num_channels detected = %d\n", opts->num_channels);
+-	av_opt_set_int(ctx->avr, "in_channel_layout",   (1 << opts->num_channels) - 1, 0 );
++	obe_set_channel_layout(ctx->avr, "in_chlayout", (1 << opts->num_channels) - 1);
+ 	av_opt_set_int(ctx->avr, "in_sample_fmt",       AV_SAMPLE_FMT_S32, 0 );
+ 	av_opt_set_int(ctx->avr, "in_sample_rate",      48000, 0 );
+-	av_opt_set_int(ctx->avr, "out_channel_layout",  (1 << opts->num_channels) - 1, 0 );
++	obe_set_channel_layout(ctx->avr, "out_chlayout", (1 << opts->num_channels) - 1);
+ 	av_opt_set_int(ctx->avr, "out_sample_fmt",      AV_SAMPLE_FMT_S32P, 0 );
+ 	av_opt_set_int(ctx->avr, "out_sample_rate",     48000, 0 );
+ 
+diff --git a/input/ndi/ndi.cpp b/input/ndi/ndi.cpp
+index 1d82531..acae510 100644
+--- a/input/ndi/ndi.cpp
++++ b/input/ndi/ndi.cpp
+@@ -118,7 +118,7 @@ typedef struct
+ 	/* End: NDI SDK related */
+ 
+ 	/* AVCodec for V210 conversion. */
+-	AVCodec         *dec;
++	const AVCodec         *dec;
+ 	AVCodecContext  *codec;
+ 	/* End: AVCodec for V210 conversion. */
+ 
+@@ -636,8 +636,7 @@ static void close_device(ndi_opts_t *opts)
+ 	}
+ 
+ 	if (ctx->codec) {
+-		avcodec_close(ctx->codec);
+-		av_free(ctx->codec);
++		avcodec_free_context(&ctx->codec);
+ 	}
+ 
+ 	if (ctx->avr)
+@@ -990,15 +989,15 @@ printf("Reducing input framerate by 2\n");
+ 		opts->audio_channel_count,
+ 		opts->audio_channel_samplerate,
+ 		(1 << opts->audio_channel_count) - 1);
+-	av_opt_set_int(ctx->avr, "in_channel_layout",   (1 << opts->audio_channel_count) - 1, 0 );
++	obe_set_channel_layout(ctx->avr, "in_chlayout", (1 << opts->audio_channel_count) - 1);
+ #if TEAMS_16KHZ
+-	av_opt_set_int(ctx->avr, "in_channel_layout",   1, 0 );
++	obe_set_channel_layout(ctx->avr, "in_chlayout", 1);
+ #endif
+ 	av_opt_set_int(ctx->avr, "in_sample_fmt",       AV_SAMPLE_FMT_S32, 0 );
+ 	av_opt_set_int(ctx->avr, "in_sample_rate",      opts->audio_channel_samplerate, 0 );
+-	av_opt_set_int(ctx->avr, "out_channel_layout",  (1 << opts->audio_channel_count) - 1, 0 );
++	obe_set_channel_layout(ctx->avr, "out_chlayout", (1 << opts->audio_channel_count) - 1);
+ #if TEAMS_16KHZ
+-	av_opt_set_int(ctx->avr, "out_channel_layout",  1, 0 );
++	obe_set_channel_layout(ctx->avr, "out_chlayout", 1);
+ #endif
+ 	av_opt_set_int(ctx->avr, "out_sample_fmt",      AV_SAMPLE_FMT_S32P, 0 );
+ 	av_opt_set_int(ctx->avr, "out_sample_rate",     48000, 0 );
+diff --git a/input/sdi/bluefish/bluefish.cpp b/input/sdi/bluefish/bluefish.cpp
+index 6c9d148..8b6bf7d 100644
+--- a/input/sdi/bluefish/bluefish.cpp
++++ b/input/sdi/bluefish/bluefish.cpp
+@@ -122,7 +122,7 @@ typedef struct
+ 	/* End: Bluefish SDK related */
+ 
+ 	/* AVCodec for V210 conversion. */
+-	AVCodec         *dec;
++	const AVCodec         *dec;
+ 	AVCodecContext  *codec;
+ 	/* End: AVCodec for V210 conversion. */
+ 
+@@ -378,18 +378,20 @@ static void *bluefish_videoThreadFunc(void *p)
+ 				break;
+ 			}
+ 
+-			AVFrame *frame = avcodec_alloc_frame();
++			AVFrame *frame = av_frame_alloc();
+ 			ctx->codec->width = opts->width;
+ 			ctx->codec->height = opts->height;
+ 
+-			AVPacket pkt;
+-			av_init_packet(&pkt);
++			AVPacket pkt = {0};
++			av_packet_unref(&pkt);
+ 
+ 			pkt.data = (uint8_t *)pVideoBuffer;
+ 			pkt.size = ctx->frameSizeBytesVideo;
+ 
+-			int ret = avcodec_decode_video2(ctx->codec, frame, &finished, &pkt);
+-			if (ret < 0 || !finished) {
++			int ret = avcodec_send_packet(ctx->codec, &pkt);
++			if (ret >= 0)
++				ret = avcodec_receive_frame(ctx->codec, frame);
++			if (ret < 0) {
+ 				fprintf(stderr, MODULE_PREFIX "Could not decode video frame\n");
+ 				break;
+ 			}
+@@ -497,9 +499,9 @@ static void *bluefish_videoThreadFunc(void *p)
+ 			}
+ 
+ 			if (frame)
+-				avcodec_free_frame(&frame);
++				av_frame_free(&frame);
+ 
+-			av_free_packet(&pkt);
++			av_packet_unref(&pkt);
+ 		}
+ 	}
+ 	printf(MODULE_PREFIX "Video thread complete\n");
+@@ -529,8 +531,7 @@ static void close_device(bluefish_opts_t *opts)
+ 	BailOut(ctx->hBvc);
+ 
+ 	if (ctx->codec) {
+-		avcodec_close(ctx->codec);
+-		av_free(ctx->codec);
++		avcodec_free_context(&ctx->codec);
+ 	}
+ 
+ 	if (ctx->avr)
+@@ -638,7 +639,6 @@ static int open_device(bluefish_opts_t *opts)
+ 		opts->width, opts->height,
+ 		opts->timebase_den, opts->timebase_num);
+ 
+-	avcodec_register_all();
+ 
+ 	ctx->dec = avcodec_find_decoder(AV_CODEC_ID_V210);
+ 	if (!ctx->dec) {
+@@ -656,10 +656,10 @@ static int open_device(bluefish_opts_t *opts)
+         }
+ 
+ 	/* Give libavresample our custom audio channel map */
+-	av_opt_set_int(ctx->avr, "in_channel_layout",   (1 << opts->num_channels) - 1, 0 );
++	obe_set_channel_layout(ctx->avr, "in_chlayout", (1 << opts->num_channels) - 1);
+ 	av_opt_set_int(ctx->avr, "in_sample_fmt",       AV_SAMPLE_FMT_S16, 0 );
+ 	av_opt_set_int(ctx->avr, "in_sample_rate",      48000, 0 );
+-	av_opt_set_int(ctx->avr, "out_channel_layout",  (1 << opts->num_channels) - 1, 0 );
++	obe_set_channel_layout(ctx->avr, "out_chlayout", (1 << opts->num_channels) - 1);
+ 	av_opt_set_int(ctx->avr, "out_sample_fmt",      AV_SAMPLE_FMT_S32P, 0 );
+ 
+ 	if (avresample_open(ctx->avr) < 0) {
+diff --git a/input/sdi/decklink/decklink.cpp b/input/sdi/decklink/decklink.cpp
+index 9a14cc8..f184f14 100644
+--- a/input/sdi/decklink/decklink.cpp
++++ b/input/sdi/decklink/decklink.cpp
+@@ -190,7 +190,7 @@ typedef struct
+     IDeckLinkConfiguration *p_config;
+ 
+     /* Video */
+-    AVCodec         *dec;
++    const AVCodec         *dec;
+     AVCodecContext  *codec;
+ 
+     /* Audio - Sample Rate Conversion. We convert S32 interleaved into S32P planer. */
+@@ -1151,7 +1151,7 @@ HRESULT DeckLinkCaptureDelegate::timedVideoInputFrameArrived( IDeckLinkVideoInpu
+ {
+     decklink_ctx_t *decklink_ctx = &decklink_opts_->decklink_ctx;
+     obe_raw_frame_t *raw_frame = NULL;
+-    AVPacket pkt;
++    AVPacket pkt = {0};
+     AVFrame *frame = NULL;
+     void *frame_bytes, *anc_line;
+     obe_t *h = decklink_ctx->h;
+@@ -1478,7 +1478,7 @@ HRESULT DeckLinkCaptureDelegate::timedVideoInputFrameArrived( IDeckLinkVideoInpu
+         }
+     }
+ 
+-    av_init_packet( &pkt );
++    av_packet_unref( &pkt );
+ 
+     if( videoframe )
+     {
+@@ -2075,8 +2075,7 @@ static void close_card( decklink_opts_t *decklink_opts )
+ 
+     if( decklink_ctx->codec )
+     {
+-        avcodec_close( decklink_ctx->codec );
+-        av_free( decklink_ctx->codec );
++        avcodec_free_context(&decklink_ctx->codec);
+     }
+ 
+     if (decklink_ctx->vanchdl) {
+@@ -2999,10 +2998,10 @@ static int open_card( decklink_opts_t *decklink_opts, int allowFormatDetection)
+         }
+ 
+         /* Give libswresample a made up channel map */
+-        av_opt_set_int( decklink_ctx->avr, "in_channel_layout",   (1 << decklink_opts->num_channels) - 1, 0 );
++        obe_set_channel_layout(decklink_ctx->avr, "in_chlayout", (1 << decklink_opts->num_channels) - 1);
+         av_opt_set_int( decklink_ctx->avr, "in_sample_fmt",       AV_SAMPLE_FMT_S32, 0 );
+         av_opt_set_int( decklink_ctx->avr, "in_sample_rate",      48000, 0 );
+-        av_opt_set_int( decklink_ctx->avr, "out_channel_layout",  (1 << decklink_opts->num_channels) - 1, 0 );
++        obe_set_channel_layout(decklink_ctx->avr, "out_chlayout", (1 << decklink_opts->num_channels) - 1);
+         av_opt_set_int( decklink_ctx->avr, "out_sample_fmt",      AV_SAMPLE_FMT_S32P, 0 );
+         av_opt_set_int( decklink_ctx->avr, "out_sample_rate",     48000, 0 );
+ 
+diff --git a/input/sdi/dektec/dektec.cpp b/input/sdi/dektec/dektec.cpp
+index 821e561..06317de 100644
+--- a/input/sdi/dektec/dektec.cpp
++++ b/input/sdi/dektec/dektec.cpp
+@@ -92,7 +92,7 @@ typedef struct
+ 	uint64_t v_counter;
+ 
+ 	/* AVCodec for V210 conversion. */
+-	AVCodec         *dec;
++	const AVCodec         *dec;
+ 	AVCodecContext  *codec;
+ 	/* End: AVCodec for V210 conversion. */
+ 
+@@ -592,8 +592,7 @@ static void close_device(dektec_opts_t *opts)
+ 	ctx->R->Stop();
+ 
+ 	if (ctx->codec) {
+-		avcodec_close(ctx->codec);
+-		av_free(ctx->codec);
++		avcodec_free_context(&ctx->codec);
+ 	}
+ 
+ 	printf(MODULE_PREFIX "Closed card idx #%d\n", opts->card_idx);
+diff --git a/input/sdi/linsys/linsys.c b/input/sdi/linsys/linsys.c
+index ebbd1a2..109532b 100644
+--- a/input/sdi/linsys/linsys.c
++++ b/input/sdi/linsys/linsys.c
+@@ -1005,10 +1005,10 @@ static int open_card( linsys_opts_t *linsys_opts )
+         }
+ 
+         /* Give libavresample a made up channel map */
+-        av_opt_set_int( linsys_ctx->avr, "in_channel_layout",   (1 << linsys_opts->num_channels) - 1, 0 );
++        obe_set_channel_layout(linsys_ctx->avr, "in_chlayout", (1 << linsys_opts->num_channels) - 1);
+         av_opt_set_int( linsys_ctx->avr, "in_sample_fmt",       AV_SAMPLE_FMT_S32, 0 );
+         av_opt_set_int( linsys_ctx->avr, "in_sample_rate",      48000, 0 );
+-        av_opt_set_int( linsys_ctx->avr, "out_channel_layout",  (1 << linsys_opts->num_channels) - 1, 0 );
++        obe_set_channel_layout(linsys_ctx->avr, "out_chlayout", (1 << linsys_opts->num_channels) - 1);
+         av_opt_set_int( linsys_ctx->avr, "out_sample_fmt",      AV_SAMPLE_FMT_S32P, 0 );
+         av_opt_set_int( linsys_ctx->avr, "out_sample_rate",     48000, 0 );
+ 
+diff --git a/input/sdi/v210/v210fileinput.cpp b/input/sdi/v210/v210fileinput.cpp
+index aa4ae90..69c87d7 100644
+--- a/input/sdi/v210/v210fileinput.cpp
++++ b/input/sdi/v210/v210fileinput.cpp
+@@ -95,7 +95,7 @@ typedef struct
+ 	uint64_t v_counter;
+ 
+ 	/* AVCodec for V210 conversion. */
+-	AVCodec         *dec;
++	const AVCodec         *dec;
+ 	AVCodecContext  *codec;
+ 	/* End: AVCodec for V210 conversion. */
+ 
+@@ -171,8 +171,8 @@ static void *v210_videoThreadFunc(void *p)
+ 
+ 		usleep(166 * 100);
+ 
+-		AVPacket pkt;
+-		av_init_packet(&pkt);
++		AVPacket pkt = {0};
++		av_packet_unref(&pkt);
+ 
+ 		pkt.data = getNextFrameAddress(opts);
+ 		pkt.size = ctx->frameSizeBytesVideo;
+@@ -249,8 +249,7 @@ static void close_device(v210_opts_t *opts)
+ 	}
+ 
+ 	if (ctx->codec) {
+-		avcodec_close(ctx->codec);
+-		av_free(ctx->codec);
++		avcodec_free_context(&ctx->codec);
+ 	}
+ 
+ 	munmap(ctx->v210_addr, ctx->v210_file_size);
+diff --git a/input/sdi/vega/vega-3301.cpp b/input/sdi/vega/vega-3301.cpp
+index f053a2b..6a57bd0 100644
+--- a/input/sdi/vega/vega-3301.cpp
++++ b/input/sdi/vega/vega-3301.cpp
+@@ -801,10 +801,10 @@ static int open_device(vega_opts_t *opts, int probe)
+                 /* Give libswresample a made up channel map.
+                  * Convert S16 interleaved to S32P planar.
+                  */
+-                av_opt_set_int(ctx->avr, "in_channel_layout",   (1 << opts->num_audio_channels) - 1, 0 );
++                obe_set_channel_layout(ctx->avr, "in_chlayout", (1 << opts->num_audio_channels) - 1);
+                 av_opt_set_int(ctx->avr, "in_sample_fmt",       AV_SAMPLE_FMT_S16, 0 );
+                 av_opt_set_int(ctx->avr, "in_sample_rate",      48000, 0 );
+-                av_opt_set_int(ctx->avr, "out_channel_layout",  (1 << opts->num_audio_channels) - 1, 0 );
++                obe_set_channel_layout(ctx->avr, "out_chlayout", (1 << opts->num_audio_channels) - 1);
+                 av_opt_set_int(ctx->avr, "out_sample_fmt",      AV_SAMPLE_FMT_S32P, 0 );
+                 av_opt_set_int(ctx->avr, "out_sample_rate",     48000, 0 );
+ 
+diff --git a/input/sdi/vega/vega-3311.cpp b/input/sdi/vega/vega-3311.cpp
+index d2fdac4..77ce915 100644
+--- a/input/sdi/vega/vega-3311.cpp
++++ b/input/sdi/vega/vega-3311.cpp
+@@ -372,10 +372,10 @@ static int open_device(vega_opts_t *opts, int probe)
+         /* Give libswresample a made up channel map.
+          * Convert S16 interleaved to S32P planar.
+          */
+-        av_opt_set_int(ctx->avr, "in_channel_layout",   (1 << opts->num_audio_channels) - 1, 0 );
++        obe_set_channel_layout(ctx->avr, "in_chlayout", (1 << opts->num_audio_channels) - 1);
+         av_opt_set_int(ctx->avr, "in_sample_fmt",       AV_SAMPLE_FMT_S16, 0 );
+         av_opt_set_int(ctx->avr, "in_sample_rate",      48000, 0 );
+-        av_opt_set_int(ctx->avr, "out_channel_layout",  (1 << opts->num_audio_channels) - 1, 0 );
++        obe_set_channel_layout(ctx->avr, "out_chlayout", (1 << opts->num_audio_channels) - 1);
+         av_opt_set_int(ctx->avr, "out_sample_fmt",      AV_SAMPLE_FMT_S32P, 0 );
+         av_opt_set_int(ctx->avr, "out_sample_rate",     48000, 0 );
+ 
+diff --git a/mux/smoothing.c b/mux/smoothing.c
+index 888c06b..b96c866 100644
+--- a/mux/smoothing.c
++++ b/mux/smoothing.c
+@@ -44,7 +44,7 @@ static void *mux_start_smoothing( void *ptr )
+     int num_muxed_data = 0, buffer_complete = 0;
+     int64_t start_clock = -1, start_pcr, end_pcr, temporal_vbv_size = 0, cur_pcr = 0;
+     obe_muxed_data_t **muxed_data = NULL, *start_data, *end_data;
+-    AVFifoBuffer *fifo_data = NULL, *fifo_pcr = NULL;
++    AVFifo *fifo_data = NULL, *fifo_pcr = NULL;
+     AVBufferRef **output_buffers = NULL;
+     int trim_ms_pending = 0;
+ 
+@@ -56,20 +56,22 @@ static void *mux_start_smoothing( void *ptr )
+     pthread_setschedparam( pthread_self(), SCHED_FIFO, &param );
+ 
+     /* This thread buffers one VBV worth of frames */
+-    fifo_data = av_fifo_alloc( obe_core_get_payload_size() );
++    fifo_data = av_fifo_alloc2( obe_core_get_payload_size(), 1, AV_FIFO_FLAG_AUTO_GROW );
+     if( !fifo_data )
+     {
+         fprintf( stderr, "[mux-smoothing] Could not allocate data fifo" );
+         return NULL;
+     }
+ 
+-    fifo_pcr = av_fifo_alloc( obe_core_get_payload_packets() * sizeof(int64_t) );
++    av_fifo_auto_grow_limit(fifo_data, INT_MAX);
++    fifo_pcr = av_fifo_alloc2( obe_core_get_payload_packets() * sizeof(int64_t), 1, AV_FIFO_FLAG_AUTO_GROW );
+     if( !fifo_pcr )
+     {
+         fprintf( stderr, "[mux-smoothing] Could not allocate pcr fifo" );
+         return NULL;
+     }
+ 
++    av_fifo_auto_grow_limit(fifo_pcr, INT_MAX);
+     output_buffers = malloc( h->num_outputs * sizeof(*output_buffers) );
+     if( !output_buffers )
+     {
+@@ -143,8 +145,8 @@ static void *mux_start_smoothing( void *ptr )
+             printf("[Mux-Smoother] smoothing buffer reset\n" );
+ #endif
+             h->mux_drop = 0;
+-            av_fifo_reset( fifo_data );
+-            av_fifo_reset( fifo_pcr );
++            av_fifo_reset2( fifo_data );
++            av_fifo_reset2( fifo_pcr );
+             buffer_complete = 0;
+             start_clock = -1;
+ 
+@@ -209,13 +211,13 @@ static void *mux_start_smoothing( void *ptr )
+         pthread_mutex_unlock( &h->mux_smoothing_queue.mutex );
+ 
+ #if LOCAL_DEBUG
+-        printf("[Mux-Smoother] fifo_data size %d, num_muxed_data %d\n", av_fifo_size(fifo_data), num_muxed_data);
++        printf("[Mux-Smoother] fifo_data size %zu, num_muxed_data %d\n", av_fifo_can_read(fifo_data), num_muxed_data);
+         printf("[Mux-Smoother] start_pcr %" PRIi64 "  end_pcr %" PRIi64 "  cur_pcr %" PRIi64 " t_vbv_size %" PRIi64 "\n",
+             start_pcr, end_pcr, cur_pcr, temporal_vbv_size);
+ #endif
+ 
+-        g_mux_smoother_fifo_pcr_size = av_fifo_size(fifo_pcr);
+-        g_mux_smoother_fifo_data_size = av_fifo_size(fifo_data);
++        g_mux_smoother_fifo_pcr_size = av_fifo_can_read(fifo_pcr);
++        g_mux_smoother_fifo_data_size = av_fifo_can_read(fifo_data);
+ 
+         /* For every object we cloned... */
+         /* Write the transport packets to the fifo_data fifo. */
+@@ -226,29 +228,24 @@ static void *mux_start_smoothing( void *ptr )
+         {
+             g_mux_smoother_last_total_item_size += muxed_data[i]->len;
+ 
+-            int len = av_fifo_size( fifo_data ) + muxed_data[i]->len;
+-
+ #if LOCAL_DEBUG
++            size_t len = av_fifo_can_read( fifo_data ) + muxed_data[i]->len;
+             if (len > 4096000 || num_muxed_data > 80)
+-                printf("i = %d, len %d\n", i, len);
++                printf("i = %d, len %zu\n", i, len);
+ #endif
+ 
+-            if( av_fifo_realloc2( fifo_data, len ) < 0 )
++            if( av_fifo_write( fifo_data, muxed_data[i]->data, muxed_data[i]->len ) < 0 )
+             {
+                 syslog( LOG_ERR, "Malloc failed\n" );
+                 return NULL;
+             }
+ 
+-            av_fifo_generic_write( fifo_data, muxed_data[i]->data, muxed_data[i]->len, NULL );
+-
+-            if( av_fifo_realloc2( fifo_pcr, av_fifo_size( fifo_pcr ) + ((muxed_data[i]->len * sizeof(int64_t)) / 188) ) < 0 )
++            if( av_fifo_write( fifo_pcr, muxed_data[i]->pcr_list, (muxed_data[i]->len * sizeof(int64_t)) / 188 ) < 0 )
+             {
+                 syslog( LOG_ERR, "Malloc failed\n" );
+                 return NULL;
+             }
+ 
+-            av_fifo_generic_write( fifo_pcr, muxed_data[i]->pcr_list, (muxed_data[i]->len * sizeof(int64_t)) / 188, NULL );
+-
+             remove_from_queue( &h->mux_smoothing_queue );
+             destroy_muxed_data( muxed_data[i] );
+         }
+@@ -259,17 +256,17 @@ static void *mux_start_smoothing( void *ptr )
+         num_muxed_data = 0;
+ 
+         /* While we have atleast 7 transport packets in the TS packet fifo.... */
+-        while(!h->mux_drop && av_fifo_size( fifo_data ) >= obe_core_get_payload_size() )
++        while(!h->mux_drop && av_fifo_can_read( fifo_data ) >= obe_core_get_payload_size() )
+         {
+-            if (av_fifo_size( fifo_data ) > 10000000) {
++            if (av_fifo_can_read( fifo_data ) > 10000000) {
+                 /* We won't want this much buffered content, lose it. */
+                 h->mux_drop = 1;
+                 continue;
+             }
+             /* allocate a buffer, of exactly 7 PCRs followed by 7 transport packets, drain the relevant fifos. */
+             output_buffers[0] = av_buffer_alloc( obe_core_get_payload_size() + obe_core_get_payload_packets() * sizeof(int64_t) );
+-            av_fifo_generic_read( fifo_pcr, output_buffers[0]->data, obe_core_get_payload_packets() * sizeof(int64_t), NULL );
+-            av_fifo_generic_read( fifo_data, &output_buffers[0]->data[obe_core_get_payload_packets() * sizeof(int64_t)], obe_core_get_payload_size(), NULL );
++            av_fifo_read( fifo_pcr, output_buffers[0]->data, obe_core_get_payload_packets() * sizeof(int64_t) );
++            av_fifo_read( fifo_data, &output_buffers[0]->data[obe_core_get_payload_packets() * sizeof(int64_t)], obe_core_get_payload_size() );
+ 
+             /* Generally, we only ever have a single (IP transmitter) output, take a reference for each. */
+             for( int i = 1; i < h->num_outputs; i++ )
+@@ -320,8 +317,8 @@ static void *mux_start_smoothing( void *ptr )
+         }
+     }
+ 
+-    av_fifo_free( fifo_data );
+-    av_fifo_free( fifo_pcr );
++    av_fifo_freep2( &fifo_data );
++    av_fifo_freep2( &fifo_pcr );
+     free( output_buffers );
+ 
+     return NULL;
+diff --git a/mux/ts/ts.c b/mux/ts/ts.c
+index 8c5d6bd..77b6177 100644
+--- a/mux/ts/ts.c
++++ b/mux/ts/ts.c
+@@ -765,7 +765,7 @@ void *open_muxer( void *ptr )
+         else if( stream_format == AUDIO_AAC )
+         {
+             /* TODO: handle associated switching */
+-            int profile_and_level, num_channels = av_get_channel_layout_nb_channels( output_stream->channel_layout );
++            int profile_and_level, num_channels = av_popcount64( output_stream->channel_layout );
+ 
+             if( num_channels > 2 )
+                 profile_and_level = output_stream->aac_opts.aac_profile == AAC_HE_V2 ? LIBMPEGTS_MPEG4_HE_AAC_V2_PROFILE_LEVEL_5 :
+diff --git a/obe/Makefile.am b/obe/Makefile.am
+index 28fc58f..96ee0d6 100644
+--- a/obe/Makefile.am
++++ b/obe/Makefile.am
+@@ -26,7 +26,10 @@ CFLAGS += -g -Wall -Wno-unused-result -DVERSION=\"$(VERSION)\" -DPROG="\"$(PACKA
+ LDFLAGS += -lpthread -lz -lx264 -lyuv
+ LDFLAGS += -lavformat -lavcodec -ldl -lfdk-aac -lbz2 -lz -lswscale -lavutil -lm -lswresample
+ LDFLAGS += -lklscte35 -lklvanc -llzma
+-LDFLAGS += -ltwolame -lmpegts -lstdc++ -ldl -lzvbi -lreadline -lcurses -lltntstools -lvapoursynth -lvapoursynth-script
++LDFLAGS += -ltwolame -lmpegts -lstdc++ -ldl -lreadline -lcurses -lltntstools
++LDFLAGS += $(shell pkg-config --libs --static zvbi-0.2 libltntstools)
++LDFLAGS += -L$(shell pkg-config --variable=prefix vapoursynth) -lvsscript
++CFLAGS += $(shell pkg-config --cflags vapoursynth)
+ 
+ if LIBX265
+ LDFLAGS += -lx265
+diff --git a/obe/obecli.c b/obe/obecli.c
+index f8a3350..a13ef46 100644
+--- a/obe/obecli.c
++++ b/obe/obecli.c
+@@ -1411,7 +1411,7 @@ extern int g_vapoursynth_enabled;
+                 {
+                     default_bitrate = 256;
+ 
+-                    FAIL_IF_ERROR( channel_map && av_get_channel_layout_nb_channels( channel_layout ) > 2,
++                    FAIL_IF_ERROR( channel_map && av_popcount64( channel_layout ) > 2,
+                                    "MP2 audio does not support > 2 channels of audio\n" );
+ 
+                     if( mp2_mode )
+@@ -2601,7 +2601,12 @@ static int show_input_streams( char *command, obecli_command_t *child )
+             if( !stream->channel_layout )
+                 snprintf( buf, sizeof(buf), "%2i channels", stream->num_channels );
+             else
+-                av_get_channel_layout_string( buf, sizeof(buf), 0, stream->channel_layout );
++            {
++                AVChannelLayout layout = {0};
++                av_channel_layout_from_mask(&layout, stream->channel_layout);
++                av_channel_layout_describe(&layout, buf, sizeof(buf));
++                av_channel_layout_uninit(&layout);
++            }
+             printf( "Input-stream-id: %d - Audio: %s%s %s %ikHz - SDI audio pair: %d\n", stream->input_stream_id, format_name,
+                     stream->stream_format == AUDIO_AAC ? stream->aac_is_latm ? " LATM" : " ADTS" : "",
+                     buf, stream->sample_rate / 1000,
+diff --git a/output/file/file.c b/output/file/file.c
+index 643d204..58110e7 100644
+--- a/output/file/file.c
++++ b/output/file/file.c
+@@ -81,7 +81,8 @@ static void *file_ts_start(void *ptr)
+ 	if (output_dest->target[ strlen(output_dest->target) - 1 ] == '@')
+ 		writeMode = 1;
+ 
+-	int ret = ltntstools_segmentwriter_alloc(&status->segmentWriter, output_dest->target, writeMode);
++	int ret = ltntstools_segmentwriter_alloc(&status->segmentWriter, output_dest->target,
++		writeMode ? ".ts" : "", writeMode);
+ 	if (ret < 0) {
+             fprintf(stderr, PREFIX "Could not create file output [%s]\n", output_dest->target);
+             return NULL;

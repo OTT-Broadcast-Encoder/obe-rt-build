@@ -1,18 +1,24 @@
 #!/bin/bash -e
 
-JOBS=8
+JOBS=${JOBS:-6}
 
 BMDSDK_VER=10.8.5
-FFMPEG_TAG=n4.2.1
-LIBYUV_TAG=cbe5385055b9360cacd14877450631b87eea1fcd
-LIBZVBI_TAG=e62d905e00cdd1d6d4333ead90fb5b44bfb49371
-LIBKLVANC_TAG=vid.obe.1.10.0
-LIBKLSCTE35_TAG=vid.obe.1.3.0
-LIBMPEGTS_TAG=hevc-dev
-X265_TAG=ef1c5205fc14d436b71b1459eba0c85fec0013b7
+BMDSDK_TAG=ad4195d3433e2aeeaa42e942bfea378110c9a283
+FFMPEG_TAG=n9.0.2
+LIBYUV_TAG=47ba8e2160b71a7cf95c0720cd8944ab771e533e
+LIBZVBI_TAG=v0.2.45
+LIBKLVANC_TAG=vid.obe.1.12.0
+LIBKLSCTE35_TAG=vid.obe.1.4.0
+LIBMPEGTS_TAG=1ee8519e79280f9cfbcf65af90cc9dc26345527a
+X265_TAG=4.2
+X264_TAG=368ad15875cf45478ff59cfae2441b1049dbdc91
 X264_BITDEPTH=8
-LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
-VAPOURSYNTH_TAG=R70
+LIBLTNTSTOOLS_TAG=v1.38.6
+VAPOURSYNTH_TAG=R81
+ZIMG_TAG=release-3.0.6
+TWOLAME_TAG=0.4.0
+FDKAAC_TAG=v3.0.0
+OBE_TAG=3fabd16c5b00daef9945a63c9bdfa1c8467ef6f6
 NDI_SDK=$PWD/NDI/sdk
 
 
@@ -88,8 +94,14 @@ else
     exit 1
 fi
 
+PREFIX=$PWD/target-root/usr/local
+PYTHON_SITE=$PREFIX/lib/python3.12/site-packages
+export PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig
+export LD_LIBRARY_PATH=$PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+
 if [ ! -d blackmagic-sdk ]; then
     git clone https://github.com/OTT-Broadcast-Encoder/blackmagic-sdk.git
+    git -C blackmagic-sdk checkout "$BMDSDK_TAG"
 fi
 
 
@@ -98,6 +110,7 @@ if [ ! -d libltntstools ]; then
 
     pushd libltntstools
         git checkout $LIBLTNTSTOOLS_TAG
+        git apply ../patches/0010-ltntstools-literal-file-target.patch
     popd
 fi
 
@@ -121,23 +134,20 @@ if [ ! -d NDI ]; then
 fi
 
 if [ ! -d x265 ]; then
-    git clone https://github.com/videolan/x265.git
+    git clone https://bitbucket.org/multicoreware/x265_git.git x265
 
     pushd x265
         git checkout $X265_TAG
 
-        patch -p1 <../patches/0003-x265-sei-overflow.patch
-        patch -p1 <../patches/0004-x265-sei-additional-elements-segfault.patch
-        #patch -p1 <../patches/0005-x265-additional-recovery-points.patch
+        # The former SEI fixes are included upstream in 4.2.
     popd
 fi
 
 if [ ! -d libzvbi ]; then
-    git clone https://github.com/LTNGlobal-opensource/libzvbi.git
+    git clone https://github.com/zapping-vbi/zvbi.git libzvbi
 
     pushd libzvbi
         git checkout $LIBZVBI_TAG
-        patch -p1 <../patches/0000-libzvbi-remove-png-dep.patch
     popd
 fi
 
@@ -158,7 +168,7 @@ if [ ! -d libklscte35 ]; then
 fi
 
 if [ ! -d zimg ]; then
-    git clone https://github.com/sekrit-twc/zimg.git --depth 1 --recurse-submodules --shallow-submodules
+    git clone https://github.com/sekrit-twc/zimg.git --branch "$ZIMG_TAG" --depth 1 --recurse-submodules --shallow-submodules
 fi
 
 if [ ! -d vapoursynth ]; then
@@ -167,10 +177,14 @@ fi
 
 if [ ! -d obe-rt ]; then
     git clone https://github.com/OTT-Broadcast-Encoder/obe-rt.git
+    git -C obe-rt checkout "$OBE_TAG"
+    git -C obe-rt apply ../patches/0008-obe-current-libraries.patch
 fi
 
 if [ ! -d x264 ]; then
     git clone https://github.com/OTT-Broadcast-Encoder/x264.git
+    git -C x264 checkout "$X264_TAG"
+    git -C x264 apply ../patches/0007-x264-current-upstream.patch
 fi
 
 if [ ! -d ffmpeg ]; then
@@ -178,7 +192,7 @@ if [ ! -d ffmpeg ]; then
 
     pushd ffmpeg
         git checkout $FFMPEG_TAG
-        patch -p1 <../patches/0006-ffmpeg-binutils-shifts.patch
+        git apply ../patches/0009-ffmpeg-obe-x264.patch
     popd
 fi
 
@@ -191,19 +205,19 @@ if [ ! -d libmpegts-obe ]; then
 fi
 
 if [ ! -d libyuv ]; then
-    git clone https://github.com/LTNGlobal-opensource/libyuv.git
-
-	chmod +x patches/0002-libyuv-csc-height.patch
+    git clone https://chromium.googlesource.com/libyuv/libyuv
 
     pushd libyuv
         git checkout $LIBYUV_TAG
-        patch -p1 <../patches/0002-libyuv-csc-height.patch
     popd
 fi
 
 if [ ! -d twolame ]; then
-    git clone https://github.com/OTT-Broadcast-Encoder/twolame.git
-	chmod +x twolame/configure
+    git clone --branch "$TWOLAME_TAG" --depth 1 https://github.com/njh/twolame.git
+fi
+
+if [ ! -d fdk-aac ]; then
+    git clone --branch "$FDKAAC_TAG" --depth 1 https://github.com/mstorsjo/fdk-aac.git
 fi
 
 pushd libltntstools
@@ -243,6 +257,7 @@ popd
 
 pushd libzvbi
     if [ ! -f .skip ]; then
+        ./autogen.sh
         ./configure --enable-shared=no --prefix=$PWD/../target-root/usr/local
 
         make -j$JOBS
@@ -293,11 +308,24 @@ popd
 
 pushd twolame
     if [ ! -f .skip ]; then
-        ./configure --prefix=$PWD/../target-root/usr/local --enable-shared=no
+        NOCONFIGURE=1 ./autogen.sh
+        ./configure --prefix=$PWD/../target-root/usr/local --enable-shared=no --disable-maintainer-mode
 
-        make -j$JOBS
-        make install
+        # Git tags omit generated manuals; OBE only needs the library and headers.
+        make -C libtwolame -j$JOBS
+        make -C libtwolame install
+        make install-pkgconfigDATA
 
+        touch .skip
+    fi
+popd
+
+pushd fdk-aac
+    if [ ! -f .skip ]; then
+        cmake -S . -B build -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+            -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+        cmake --build build -j"$JOBS"
+        cmake --install build
         touch .skip
     fi
 popd
@@ -318,6 +346,7 @@ popd
 pushd ffmpeg
     if [ ! -f .skip ]; then
         export CFLAGS="-I$PWD/../target-root/usr/local/include -I$PWD/../blackmagic-sdk/10.11.2/Linux/include"
+        export CXXFLAGS="$CFLAGS"
         export LDFLAGS="-L$PWD/../target-root/usr/local/lib -lpthread -ldl"
         export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig:/usr/local/lib/pkgconfig
 
@@ -325,7 +354,9 @@ pushd ffmpeg
             --enable-gpl \
             --enable-nonfree \
             --enable-decklink \
-            --disable-swscale-alpha \
+            --enable-libfdk-aac \
+            --enable-libx264 \
+            --enable-libx265 \
             --pkg-config-flags="--static" \
             --enable-gpl \
             --enable-nonfree
@@ -339,6 +370,7 @@ pushd ffmpeg
         make install
 
         unset CFLAGS
+        unset CXXFLAGS
         unset LDFLAGS
         unset PKG_CONFIG_PATH
 
@@ -348,10 +380,10 @@ popd
 
 pushd libyuv
     if [ ! -f .skip ]; then
-        make -f linux.mk
-
-        cp -r include/* $PWD/../target-root/usr/local/include
-        cp libyuv.a $PWD/../target-root/usr/local/lib
+        cmake -S . -B build -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+            -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release -DLIBYUV_DISABLE_JPEG=ON
+        cmake --build build -j"$JOBS"
+        cmake --install build
 
         touch .skip
     fi
@@ -372,29 +404,11 @@ popd
 
 pushd vapoursynth
     if [ ! -f .skip ]; then
-        export CFLAGS="-I$PWD/../target-root/usr/local/include -DVS_USE_LATEST_API"
-        export LDFLAGS="-L$PWD/../target-root/usr/local/lib"
-        export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig:/usr/local/lib/pkgconfig
-
-        ./autogen.sh
-        ./configure --prefix=$PWD/../target-root/usr/local
-
-        make clean
-        make -j$JOBS
-        make install
-
-        python3 setup.py sdist -d sdist
-
-        mkdir -p empty
-
-        pushd empty
-            pip3 install --break-system-packages vapoursynth --no-index --find-links ../sdist
-        popd
-
-        unset CFLAGS
-        unset LDFLAGS
-        unset PKG_CONFIG_PATH
-        unset PYTHON_VERSION
+        PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig" \
+            pip3 install --no-build-isolation --no-deps --target "$PYTHON_SITE" \
+            --config-settings=build-dir=build \
+            --config-settings=setup-args="-Db_lto_threads=$JOBS" \
+            --config-settings=compile-args="-j$JOBS" .
 
         touch .skip
     fi
@@ -410,7 +424,7 @@ build_obe() {
         export CFLAGS="$CFLAGS -I$NDI_SDK/include"
         export LDFLAGS="-L$PWD/../target-root/usr/local/lib -no-pie"
         export LDFLAGS="$LDFLAGS -L$NDI_SDK/lib/x86_64-linux-gnu"
-        export PKG_CONFIG_PATH=$PWD/../target-root/usr/local/lib/pkgconfig
+        export PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig:$PYTHON_SITE/vapoursynth/pkgconfig
 
         if [ -f autogen.sh ]; then
             ./autogen.sh --build
