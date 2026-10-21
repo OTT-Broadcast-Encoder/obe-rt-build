@@ -1,0 +1,14 @@
+FROM ubuntu:24.04
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    ca-certificates sudo wget curl patch python3-dev python3-pip python3-venv \
+    libpciaccess-dev libxext-dev libxfixes-dev gettext
+
+RUN python3 -m venv /opt/obe-build-venv
+ENV PATH="/opt/obe-build-venv/bin:${PATH}"
+
+COPY build.sh /tmp/obe-build.sh
+RUN DEBIAN_FRONTEND=noninteractive bash -e /tmp/obe-build.sh installdeps
+
+WORKDIR /work
+CMD ["./build.sh"]

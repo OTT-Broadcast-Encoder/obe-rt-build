@@ -12,6 +12,7 @@ LIBMPEGTS_TAG=hevc-dev
 X265_TAG=ef1c5205fc14d436b71b1459eba0c85fec0013b7
 X264_BITDEPTH=8
 LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
+VAPOURSYNTH_TAG=R70
 NDI_SDK=$PWD/NDI/sdk
 
 
@@ -74,7 +75,7 @@ elif [ "$1" == "installdeps" ]; then
                             libkmod-dev \
                             libdw-dev \
                             libpixman-1-dev \
-                            libcairo-dev \
+                            libcairo2-dev \
                             flex \
                             bison
 
@@ -157,11 +158,11 @@ if [ ! -d libklscte35 ]; then
 fi
 
 if [ ! -d zimg ]; then
-    git clone https://bitbucket.org/the-sekrit-twc/zimg.git --depth 1 --recurse-submodules --shallow-submodules
+    git clone https://github.com/sekrit-twc/zimg.git --depth 1 --recurse-submodules --shallow-submodules
 fi
 
 if [ ! -d vapoursynth ]; then
-    git clone https://github.com/vapoursynth/vapoursynth.git --depth 1 --recurse-submodules --shallow-submodules
+    git clone https://github.com/vapoursynth/vapoursynth.git --branch "$VAPOURSYNTH_TAG" --depth 1 --recurse-submodules --shallow-submodules
 fi
 
 if [ ! -d obe-rt ]; then
@@ -177,6 +178,7 @@ if [ ! -d ffmpeg ]; then
 
     pushd ffmpeg
         git checkout $FFMPEG_TAG
+        patch -p1 <../patches/0006-ffmpeg-binutils-shifts.patch
     popd
 fi
 
@@ -404,7 +406,7 @@ build_obe() {
     echo "Building OBE for BlackMagic SDK version $BMDSDK_VER"
 
     pushd obe-rt
-        export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_DIR -no-pie"
+        export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_DIR -no-pie -D__STDC_CONSTANT_MACROS"
         export CFLAGS="$CFLAGS -I$NDI_SDK/include"
         export LDFLAGS="-L$PWD/../target-root/usr/local/lib -no-pie"
         export LDFLAGS="$LDFLAGS -L$NDI_SDK/lib/x86_64-linux-gnu"
