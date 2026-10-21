@@ -5,8 +5,8 @@
   const form = byId("config-form");
   const fields = ["name", "input_url", "output_url", "video_bitrate_kbps", "mux_bitrate_kbps", "vbv_buffer_kbits", "preset", "gop_frames", "bframes", "lookahead_frames", "threads", "audio_bitrate_kbps"];
   const numericFields = new Set(["video_bitrate_kbps", "mux_bitrate_kbps", "vbv_buffer_kbits", "gop_frames", "bframes", "lookahead_frames", "threads", "audio_bitrate_kbps"]);
-  const phaseLabels = { idle: "Fermo", probing: "Verifica ingresso", starting: "Avvio in corso", running: "In codifica", reconnecting: "Riconnessione", stopping: "Arresto in corso", error: "Errore" };
-  const phaseTitles = { idle: "Encoder fermo", probing: "Verifica della sorgente", starting: "Avvio dell’encoder", running: "Codifica in corso", reconnecting: "Sorgente in riconnessione", stopping: "Arresto dell’encoder", error: "Intervento richiesto" };
+  const phaseLabels = { idle: "Fermo", probing: "Verifica ingresso", starting: "Avvio in corso", running: "In codifica", reconnecting: "Riconnessione", restart_wait: "Attesa riavvio", stopping: "Arresto in corso", error: "Errore" };
+  const phaseTitles = { idle: "Encoder fermo", probing: "Verifica della sorgente", starting: "Avvio dell’encoder", running: "Codifica in corso", reconnecting: "Sorgente in riconnessione", restart_wait: "Recupero del processo", stopping: "Arresto dell’encoder", error: "Intervento richiesto" };
   const viewTitles = { overview: "Panoramica", configuration: "Configurazione", events: "Registro eventi" };
   const timeFormat = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const shortTimeFormat = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
@@ -21,13 +21,14 @@
   let mutationEpoch = 0;
   let profileSignature = "";
   let eventSignature = "";
+  let exitSignature = "";
   let cpuSamples = [];
   let chartPid = null;
   let lastSampleAt = 0;
 
   const text = (id, value) => { byId(id).textContent = value; };
   const isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
-  const activeProcess = () => state && (state.process_alive || ["probing", "starting", "running", "reconnecting", "stopping"].includes(state.phase));
+  const activeProcess = () => state && (state.process_alive || state.recovery?.active || ["probing", "starting", "running", "reconnecting", "restart_wait", "stopping"].includes(state.phase));
   const canConfigure = () => state && !activeProcess() && ["idle", "error"].includes(state.phase);
   const conflict = () => Boolean(state && draftRevision !== null && state.revision !== draftRevision);
 
@@ -133,6 +134,7 @@
     byId("profile-select").disabled = !state || Boolean(pending);
     for (const name of fields) form.elements.namedItem(name).disabled = !state || Boolean(pending);
     byId("srt-passphrase").disabled = !state || Boolean(pending) || !stopped;
+    byId("auto-restart").disabled = !connected || Boolean(pending) || !stopped || !state?.recovery;
     byId("overview-draft").hidden = !dirty;
     const tag = byId("draft-status");
     tag.textContent = !state ? "Caricamento" : conflict() ? "Revisione aggiornata" : dirty ? "Modifiche non salvate" : "Profilo salvato";
@@ -248,6 +250,37 @@
     text("stream-telemetry-detail", detail);
   }
 
+  function renderRecovery() {
+    const recovery = state?.recovery;
+    let summary = "Recupero manuale dopo un arresto imprevisto.";
+    if (!connected) summary = "Stato del recupero non disponibile: servizio non connesso.";
+    else if (!recovery) summary = "Questa versione del servizio non espone la diagnostica del recupero.";
+    else if (recovery.exhausted) summary = `Budget esaurito: ${recovery.attempts} tentativi. Controlla la diagnostica prima di avviare nuovamente.`;
+    else if (isFiniteNumber(recovery.next_retry_seconds)) summary = `Riavvio ${recovery.attempts + 1}/${recovery.max_attempts} tra ${numberFormat.format(recovery.next_retry_seconds)} s. Arresta encoder per annullarlo.`;
+    else if (recovery.active && recovery.enabled) summary = `Recupero automatico attivo · ${recovery.attempts}/${recovery.max_attempts} tentativi utilizzati.`;
+    else if (recovery.enabled) summary = `Recupero terminato · ${recovery.attempts}/${recovery.max_attempts} tentativi utilizzati.`;
+    text("recovery-status", summary);
+    const history = recovery?.history || [];
+    const signature = JSON.stringify(history);
+    if (signature === exitSignature) return;
+    exitSignature = signature;
+    const reasons = { process_signal: "Segnale di sistema", process_exit: "Uscita imprevista", operator_stop: "Arresto manuale", panel_shutdown: "Spegnimento pannello", probe_complete: "Verifica completata", probe_timeout: "Timeout verifica", start_timeout: "Avvio non confermato", unsupported_input: "Ingresso non supportato", operation_failed: "Operazione fallita", spawn_failed: "Avvio processo fallito", encoder_unavailable: "Eseguibile non disponibile" };
+    const items = [...history].reverse().map((entry) => {
+      const item = document.createElement("li");
+      const date = new Date(entry.time);
+      const stamp = Number.isNaN(date.getTime()) ? "—" : timeFormat.format(date);
+      const outcome = entry.signal || (entry.returncode === null ? "nessun processo avviato" : `codice ${entry.returncode}`);
+      item.textContent = `${stamp} · PID ${entry.pid ?? "—"} · ${reasons[entry.reason] || "Processo terminato"} · ${outcome} · durata ${entry.uptime_seconds} s · tentativo ${entry.restart_attempt}`;
+      return item;
+    });
+    if (!items.length) {
+      const item = document.createElement("li");
+      item.textContent = "Nessuna uscita registrata dall’avvio del pannello.";
+      items.push(item);
+    }
+    byId("exit-history").replaceChildren(...items);
+  }
+
   function renderChart() {
     const count = cpuSamples.length;
     byId("chart-empty").hidden = count > 1;
@@ -338,7 +371,7 @@
 
   function applyState(next, options = {}) {
     if (!next || typeof next !== "object" || !next.config || !Number.isInteger(next.revision)) throw new Error("Il servizio ha restituito uno stato non valido.");
-    if (["probing", "starting"].includes(state?.phase) && ["idle", "running", "reconnecting", "error"].includes(next.phase)) setNotice("");
+    if (["probing", "starting"].includes(state?.phase) && ["idle", "running", "reconnecting", "restart_wait", "error"].includes(next.phase)) setNotice("");
     state = next;
     connected = true;
     byId("api-error").hidden = true;
@@ -349,7 +382,7 @@
     renderProfiles(next.profiles);
     text("session-name", next.config.name || "Profilo encoder");
     text("phase-tag", phaseLabels[next.phase] || "Stato sconosciuto");
-    const warning = ["probing", "starting", "reconnecting", "stopping"].includes(next.phase);
+    const warning = ["probing", "starting", "reconnecting", "restart_wait", "stopping"].includes(next.phase);
     const tone = next.phase === "running" ? "good" : next.phase === "error" ? "bad" : warning ? "warning" : "";
     byId("phase-tag").className = `status-tag ${tone}`;
     document.querySelector(".session-panel").dataset.phase = next.phase;
@@ -357,7 +390,9 @@
     text("session-heading", phaseTitles[next.phase] || "Stato dell’encoder");
     text("session-message", next.message || "Nessun dettaglio disponibile");
     text("session-pid", `PID ${next.pid ?? "—"}`);
-    text("session-detail", next.encoding_started ? "Codifica confermata dal processo" : next.process_alive ? "Processo avviato · codifica non ancora confermata" : "Nessun processo di codifica attivo");
+    text("session-detail", next.encoding_started ? "Codifica confermata dal processo" : next.process_alive ? "Processo avviato · codifica non ancora confermata" : next.phase === "restart_wait" ? "Nessun processo attivo · riavvio programmato" : "Nessun processo di codifica attivo");
+    if (next.recovery?.active) byId("auto-restart").value = String(next.recovery.enabled);
+    renderRecovery();
     renderSignal(next.config);
     renderMetrics(options.sample !== false);
     renderTelemetry();
@@ -369,6 +404,7 @@
 
   function markDisconnected(error) {
     connected = false;
+    renderRecovery();
     const banner = byId("api-error");
     banner.textContent = `Connessione al servizio interrotta. ${error.message} Nuovo tentativo automatico tra 2 secondi.`;
     banner.hidden = false;
@@ -465,6 +501,7 @@
     if (action === "stop") { byId("stop-dialog").showModal(); return; }
     if (dirty || !canConfigure() || conflict()) return;
     const payload = { revision: state.revision };
+    if (action === "start" && state.recovery) payload.auto_restart = byId("auto-restart").value === "true";
     const passphraseInput = byId("srt-passphrase");
     if (/^srt:\/\//i.test(state.config.input_url) && passphraseInput.value) {
       const byteLength = new TextEncoder().encode(passphraseInput.value).length;
