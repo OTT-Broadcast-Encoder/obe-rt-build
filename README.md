@@ -1,8 +1,7 @@
 # obe-build-environment
-Building the OBE environment from KL repos. The build script clones tip for
-all of the major repos required and builds OBE in a self-contained
-'target-root' directory, along with avconf/ffmpeg and any other project
-dependencies.
+Building the OBE environment from pinned upstream releases and the OBE forks.
+The open-source library snapshot is dated 2026-10-21. Sources and artifacts
+are kept in this checkout, with installed libraries under `target-root`.
 
 ## Isolated Ubuntu build
 
@@ -10,38 +9,53 @@ From the repository root, build the toolchain image and run the build inside it:
 
 ```sh
 docker build -t obe-rt-build:ubuntu24.04 -f docker/obe-builder/Dockerfile.ubuntu .
-docker run --name obe-rt-build --cpus=6 --memory=8g \
+docker build -t obe-rt-build:current-2026-10-21 -f docker/obe-builder/Dockerfile.current .
+docker run --name obe-rt-build-current --cpus=6 --memory=8g \
     --mount "type=bind,source=$PWD,target=/work" \
-    -e GIT_TERMINAL_PROMPT=0 obe-rt-build:ubuntu24.04
+    -e GIT_TERMINAL_PROMPT=0 -e JOBS=6 obe-rt-build:current-2026-10-21
 ```
 
 System dependencies stay in the container, and Python packages use its virtual
 environment. Sources and build outputs persist in the repository directory;
 the executable is `obecli`, also installed under `target-root/usr/local/bin`.
-VapourSynth is pinned to R70 to retain the Autotools and `setup.py` build used
-by this script; current upstream uses a different build system.
-Restart an existing build container with `docker start -a obe-rt-build` to retry
+VapourSynth R81 uses Meson and installs its Python package, native libraries
+and headers under `target-root/usr/local/lib/python3.12/site-packages`.
+Restart an existing build container with `docker start -a obe-rt-build-current` to retry
 after a failure; completed dependency builds are reused through `.skip` files.
 
 Run the resulting CLI with the same isolated toolchain and the locally built
-libraries and Python module:
+libraries and Python module. `run.sh` supplies the library and Python paths:
 
 ```sh
 docker run --rm -it --cpus=6 --memory=8g \
     --mount "type=bind,source=$PWD,target=/work" \
-    -e LD_LIBRARY_PATH=/work/target-root/usr/local/lib:/work/NDI/sdk/lib/x86_64-linux-gnu \
-    -e PYTHONPATH=/work/target-root/usr/local/lib/python3.12/site-packages \
-    obe-rt-build:ubuntu24.04 ./obecli
+    obe-rt-build:current-2026-10-21 ./run.sh
 ```
 
-The build includes the upstream FFmpeg fix for Binutils 2.41 and newer. CLI
-startup, a short FFmpeg software encode, and a VapourSynth blank frame were
-verified in this container. Capture devices and GPU encoding require their
-drivers and explicit device access when launching a runtime container.
+Use a fresh checkout for this snapshot: `.skip` files reuse completed builds
+and do not upgrade existing source directories or detect version changes.
+Keep an older working checkout separate for comparisons and rollback.
+NDI v4 and DeckLink 10.8.5 (OBE) / 10.11.2 (FFmpeg) are unchanged.
+The archived Intel i965 driver is retained for Haswell compatibility.
+Capture and GPU encoding require hardware drivers and explicit device access.
+
+Run the software integration checks in the same isolated environment:
+
+```sh
+docker run --rm --cpus=6 --memory=8g \
+    --mount "type=bind,source=$PWD,target=/work" \
+    obe-rt-build:current-2026-10-21 ./tests/smoke-current.sh
+```
+
+The checks exercise OBE's audio encoders and PES timestamps, decoded audio,
+FIFO growth/reset, file output names and bytes, padded NV12 conversion, x264 speed control, FFmpeg software
+encoders, embedded VSScript, the Python module, and CLI startup.
+See [LIBRARIES.md](LIBRARIES.md) for source versions and compatibility patches.
 
 ## Original CentOS instructions
 
-Tested on CentOS 7.2.1511 only.
+Historical instructions for the original dependency set; this snapshot is
+validated with Ubuntu 24.04, GCC 13 and Python 3.12 in Docker.
 
 Manually, make sure you yum install any packages described at the start of the build script,
 see build.sh yum commands.
