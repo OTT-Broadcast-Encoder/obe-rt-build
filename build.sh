@@ -186,6 +186,7 @@ if [ ! -d obe-rt ]; then
     git -C obe-rt apply ../patches/0012-obe-url-reconnect.patch
     git -C obe-rt apply ../patches/0013-obe-ltn-safety-fixes.patch
     git -C obe-rt apply ../patches/0015-obe-srt-input.patch
+    git -C obe-rt apply ../patches/0017-obe-avc-preset.patch
 fi
 
 if [ ! -d x264 ]; then

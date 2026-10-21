@@ -1,0 +1,72 @@
+diff --git a/obe/obe.c b/obe/obe.c
+index 2f517ff..98e6568 100644
+--- a/obe/obe.c
++++ b/obe/obe.c
+@@ -977,7 +977,7 @@ int obe_populate_avc_encoder_params( obe_t *h, int input_stream_id, x264_param_t
+     if( h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY ) {
+         x264_param_default_preset(param, preset_name, "zerolatency");
+         // printf("Using x264 preset: %s\n", stream->preset_name);
+-    } else if (tuning_name)
++    } else if (preset_name || tuning_name)
+         x264_param_default_preset(param, preset_name, tuning_name);
+     else
+         x264_param_default( param );
+diff --git a/tests/avc-preset.c b/tests/avc-preset.c
+new file mode 100644
+index 0000000..7bc8462
+--- /dev/null
++++ b/tests/avc-preset.c
+@@ -0,0 +1,53 @@
++/* Exercise the real OBE parameter builder, before adaptive speedcontrol starts.
++ * Run with tests/avc-preset.sh in obe-rt-build's existing builder image. */
++#include <assert.h>
++#include "common/common.h"
++
++static void check(obe_t *h, const char *preset, const char *tuning)
++{
++    x264_param_t expected, actual;
++    const char *effective_tuning = h->obe_system == OBE_SYSTEM_TYPE_GENERIC ? tuning : "zerolatency";
++    assert(x264_param_default_preset(&expected, preset, effective_tuning) == 0);
++    assert(obe_populate_avc_encoder_params(h, 0, &actual, preset, tuning) == 0);
++    /* These properties distinguish presets and are not OBE's explicit overrides. */
++    assert(actual.rc.b_mb_tree == expected.rc.b_mb_tree);
++    assert(actual.analyse.i_subpel_refine == expected.analyse.i_subpel_refine);
++    assert(actual.analyse.i_trellis == expected.analyse.i_trellis);
++    assert(actual.analyse.b_mixed_references == expected.analyse.b_mixed_references);
++    assert(actual.b_cabac == expected.b_cabac);
++    assert(actual.b_interlaced && actual.b_tff);
++    assert(actual.i_width == 1920 && actual.i_height == 1080);
++    if (h->obe_system == OBE_SYSTEM_TYPE_GENERIC)
++    {
++        assert(actual.i_frame_reference == 4);
++        assert(actual.sc.f_speed == 1.0);
++    }
++    else
++        assert(actual.i_bframe == 0 && actual.rc.i_lookahead == 0);
++}
++
++int main(void)
++{
++    obe_int_input_stream_t stream = {
++        .input_stream_id = 0, .stream_type = STREAM_TYPE_VIDEO,
++        .width = 1920, .height = 1080, .interlaced = 1, .tff = 1,
++        .timebase_num = 1, .timebase_den = 25, .sar_num = 1, .sar_den = 1,
++    };
++    obe_device_t device = { .num_input_streams = 1, .input_streams = { &stream } };
++    obe_t h = { .num_devices = 1, .devices = { &device } };
++    const int modes[] = { OBE_SYSTEM_TYPE_GENERIC, OBE_SYSTEM_TYPE_LOW_LATENCY,
++                          OBE_SYSTEM_TYPE_LOWEST_LATENCY };
++    for (unsigned i = 0; i < sizeof(modes)/sizeof(modes[0]); i++)
++    {
++        h.obe_system = modes[i];
++        check(&h, "veryfast", NULL);
++        check(&h, "faster", NULL);
++        check(&h, "medium", NULL);
++        check(&h, "ultrafast", NULL);
++        check(&h, "medium", "grain");
++        check(&h, NULL, "grain");
++        check(&h, NULL, NULL);
++    }
++    puts("PASS AVC presets, optional tuning, OBE overrides and latency modes");
++    return 0;
++}
