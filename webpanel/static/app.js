@@ -24,6 +24,8 @@
   let cpuSamples = [];
   let chartPid = null;
   let lastSampleAt = 0;
+  let selectedChannel = new URLSearchParams(location.search).get("channel") || "main";
+  let channelSignature = "";
 
   const text = (id, value) => { byId(id).textContent = value; };
   const isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
@@ -114,6 +116,8 @@
     const stopped = canConfigure();
     const active = activeProcess();
     const ready = connected && !pending && stopped && !dirty && !conflict();
+    byId("channel-select").disabled = Boolean(pending);
+    byId("new-channel").disabled = !connected || Boolean(pending) || dirty || byId("channel-select").options.length >= 4;
     document.querySelectorAll('[data-action="start"]').forEach((button) => {
       button.disabled = !ready;
       if (button.closest(".session-actions")) button.hidden = Boolean(active);
@@ -398,7 +402,8 @@
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch(`/api/${path}`, {
+      const endpoint = path === "channels" ? "/api/channels" : `/api/channels/${encodeURIComponent(selectedChannel)}/${path}`;
+      const response = await fetch(endpoint, {
         method,
         headers: body === undefined ? { Accept: "application/json" } : { Accept: "application/json", "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -426,13 +431,63 @@
     const epoch = mutationEpoch;
     try {
       if (!pending) {
-        const next = await api("state");
-        if (epoch === mutationEpoch && !pending) applyState(next);
+        const [next, channels] = await Promise.all([api("state"), api("channels")]);
+        if (epoch === mutationEpoch && !pending) { renderChannels(channels); applyState(next); }
       }
     } catch (error) {
-      if (epoch === mutationEpoch && !pending) markDisconnected(error);
+      if (epoch === mutationEpoch && !pending) {
+        if (error.status === 404 && selectedChannel !== "main") {
+          await selectChannel("main");
+          setNotice("Il canale richiesto non è disponibile. Aperto il canale principale.", "warning");
+        } else markDisconnected(error);
+      }
     } finally { window.setTimeout(poll, 2000); }
   }
+
+  function renderChannels(data) {
+    const signature = JSON.stringify(data);
+    if (signature === channelSignature) return;
+    channelSignature = signature;
+    const select = byId("channel-select");
+    select.replaceChildren(...data.channels.map((channel) => {
+      const option = document.createElement("option");
+      option.value = channel.id;
+      option.textContent = `${channel.name} · ${phaseLabels[channel.phase] || channel.phase}`;
+      return option;
+    }));
+    select.value = selectedChannel;
+    text("channel-summary", `${data.channels.filter(channel => channel.process_alive).length} attivi · ${data.channels.length}/${data.limit} canali`);
+  }
+
+  async function selectChannel(id) {
+    if (dirty || pending) { byId("channel-select").value = selectedChannel; setNotice("Salva o ripristina la bozza prima di cambiare canale.", "warning"); return; }
+    selectedChannel = id;
+    mutationEpoch += 1;
+    pending = "channel";
+    state = null; baseConfig = null; draftRevision = null; cpuSamples = []; chartPid = null;
+    byId("srt-passphrase").value = "";
+    setNotice(""); updateControls();
+    const url = new URL(location.href);
+    url.searchParams.set("channel", id);
+    history.replaceState(null, "", url);
+    try { const [next, channels] = await Promise.all([api("state"), api("channels")]); channelSignature = ""; renderChannels(channels); applyState(next); }
+    catch (error) { markDisconnected(error); }
+    finally { pending = null; updateControls(); }
+  }
+
+  byId("channel-select").addEventListener("change", event => void selectChannel(event.target.value));
+  byId("new-channel").addEventListener("click", () => byId("channel-dialog").showModal());
+  byId("cancel-channel").addEventListener("click", () => byId("channel-dialog").close());
+  byId("channel-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    if (pending) return;
+    pending = "create-channel"; mutationEpoch += 1; updateControls();
+    let created;
+    try { created = await api("channels", "POST", { name: byId("channel-name").value.trim() }); byId("channel-dialog").close(); byId("channel-form").reset(); }
+    catch (error) { byId("channel-dialog").close(); setNotice(error.message, "error"); }
+    finally { pending = null; updateControls(); }
+    if (created) await selectChannel(created.id);
+  });
 
   async function runAction(action, payload) {
     if (pending || !connected) return;

@@ -21,12 +21,14 @@
         <a href="#configuration" data-view="configuration"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg><span>Configurazione</span></a>
         <a href="#events" data-view="events"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h13M8 12h13M8 19h13M3 5h.01M3 12h.01M3 19h.01"/></svg><span>Registro eventi</span><span class="nav-count" id="event-count">0</span></a>
       </nav>
-      <div class="sidebar-bottom"><div class="local-status"><span class="status-dot" id="api-dot"></span><span id="api-status">Connessione…</span></div><p>Un encoder. Un segnale.</p><div class="version-line">OBE Control <span id="panel-version">—</span></div></div>
+      <div class="sidebar-bottom"><div class="local-status"><span class="status-dot" id="api-dot"></span><span id="api-status">Connessione…</span></div><p>Controllo dei canali.</p><div class="version-line">OBE Control <span id="panel-version">—</span></div></div>
     </aside>
 
     <div class="main-shell">
       <header class="topbar"><span class="breadcrumb">Workspace <span>/</span> <strong id="breadcrumb-current">Panoramica</strong></span><span class="service-label"><span class="small-square"></span> Servizio locale</span></header>
       <main id="main-content" tabindex="-1">
+        <div class="channel-toolbar"><label for="channel-select">Canale</label><select id="channel-select" aria-label="Canale encoder"><option value="main">Principale</option></select><button id="new-channel" class="button button-outline" type="button">Nuovo canale</button><span id="channel-summary"></span></div>
+        <dialog id="channel-dialog"><form id="channel-form"><h2>Nuovo canale</h2><div class="field"><label for="channel-name">Nome</label><input id="channel-name" required maxlength="64" autocomplete="off"></div><p>Configurazione e processo separati. Massimo quattro canali; la capacità dipende dal server.</p><div class="config-buttons"><button id="cancel-channel" class="button button-quiet" type="button">Annulla</button><button class="button button-primary" type="submit">Crea canale</button></div></form></dialog>
         <div id="api-error" class="notice notice-error" role="alert" hidden></div>
         <div id="action-notice" class="notice" role="status" aria-live="polite" hidden></div>
 

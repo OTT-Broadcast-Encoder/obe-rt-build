@@ -278,6 +278,44 @@ class PanelTests(unittest.TestCase):
         self.assertIsNone(state['telemetry']['output_bitrate_kbps'])
 
 
+    def test_independent_processes_and_persistence(self):
+        status, created = self.request('POST', '/api/channels', {'name': 'Secondo canale'})
+        self.assertEqual(status, 201, created)
+        prefix = '/api/channels/' + created['id']
+        self.assertEqual(self.request('GET', prefix+'/state')[1]['config']['name'], 'Secondo canale')
+        self.request('POST', '/api/start', {'revision': self.state()['revision']})
+        first = self.wait_phase({'running'})
+        self.assertEqual(self.request('POST', prefix+'/start', {'revision': created['state']['revision']})[0], 202)
+        deadline = time.monotonic()+4
+        while time.monotonic() < deadline:
+            second = self.request('GET', prefix+'/state')[1]
+            if second['phase'] == 'running': break
+            time.sleep(.05)
+        self.assertEqual(second['phase'], 'running')
+        self.assertNotEqual(first['pid'], second['pid'])
+        self.request('POST', prefix+'/stop', {})
+        self.assertTrue(self.state()['process_alive'])
+        self.stop_server()
+        self.start_server()
+        self.assertEqual(self.request('GET', prefix+'/state')[1]['config']['name'], 'Secondo canale')
+        self.assertFalse(self.state()['process_alive'])
+        self.assertFalse(self.request('GET', prefix+'/state')[1]['process_alive'])
+
+    def test_conflicts_limits_and_invalid_ids(self):
+        status, created = self.request('POST', '/api/channels', {'name': 'Duplicato'})
+        self.assertEqual(status, 201)
+        prefix = '/api/channels/'+created['id']
+        self.request('PUT', prefix+'/config', {'revision': created['state']['revision'], 'config': self.state()['config']})
+        self.request('POST', '/api/start', {'revision': self.state()['revision']})
+        self.wait_phase({'running'})
+        revision = self.request('GET', prefix+'/state')[1]['revision']
+        self.assertEqual(self.request('POST', prefix+'/start', {'revision': revision})[0], 409)
+        for _ in range(2): self.assertEqual(self.request('POST', '/api/channels', {'name': 'Altro'})[0], 201)
+        self.assertEqual(self.request('POST', '/api/channels', {'name': 'Quinto'})[0], 409)
+        self.assertEqual(len(self.request('GET', '/api/channels')[1]['channels']), 4)
+        self.assertEqual(self.request('GET', '/api/channels/../state')[0], 404)
+
+
 class TelemetryTests(unittest.TestCase):
     def setUp(self):
         self.module = runpy.run_path(str(ROOT/'webpanel/server.py'))

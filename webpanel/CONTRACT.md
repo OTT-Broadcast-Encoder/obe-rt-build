@@ -1,6 +1,6 @@
-# Webpanel 0.2 — contratto
+# Webpanel 0.3 — contratto
 
-Console italiana, scura, per un processo OBE gestito dal pannello. Python stdlib
+Console italiana, scura, per processi OBE gestiti per canale. Python stdlib
 e HTML/CSS/JS, font IBM Plex locali. Nessuna dipendenza nuova. Il servizio resta
 locale, accessibile da remoto mediante tunnel SSH; nessun intervento sui router.
 
@@ -115,3 +115,20 @@ Schema, tipi, clock e monotonia dei contatori sono validati; campioni malformati
 non sostituiscono quelli validi. Le righe di misura non riempiono il registro
 eventi e non creano file di statistiche. I processi precedenti non possono
 aggiornare la telemetria del successivo.
+
+## Canali
+
+Fino a quattro canali con processo, profilo, revisione, eventi e telemetria
+indipendenti. `main` conserva stato e rotte esistenti; nessun autoavvio.
+
+- `GET /api/channels`: `{limit:4,channels:[{id,name,phase,process_alive}]}`.
+- `POST /api/channels`: `{name}` → 201 `{id,state}`; 409 se il limite è raggiunto.
+- `/api/channels/{id}/state|config|probe|start|stop`: stessi metodi e corpi
+  delle rotte originali, che restano alias di `main`.
+- Identificatori assegnati dal server: `main`, `channel-2`…`channel-4`.
+- Profili aggiuntivi in `.state/channels/{id}/config.json`; porte iniziali distinte.
+- Ingressi UDP/RTP con porte sovrapposte e destinazioni UDP già usate da un
+  canale attivo sono rifiutati prima dell'avvio (409). Il limite di quattro
+  canali non certifica la capacità CPU della macchina.
+- La selezione UI non arresta la codifica; una bozza va salvata o ripristinata
+  prima del cambio. Un collegamento a un canale assente torna a `main`.

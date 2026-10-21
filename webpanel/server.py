@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Console locale OBE: configurazione validata e un solo processo posseduto."""
+"""Console locale OBE: configurazione validata e processi isolati per canale."""
 
 import argparse
 from collections import deque
@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qsl, quote, quote_plus, unquote, urlsplit
 
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 TELEMETRY_COUNTERS = ("video_frames", "video_bytes", "output_bytes", "output_datagrams", "output_errors")
 TELEMETRY_FIELDS = {"schema", "monotonic_ns", *TELEMETRY_COUNTERS, "video_queue_frames"}
 TELEMETRY_MAX_AGE = 5
@@ -586,6 +586,92 @@ def reject_duplicates(pairs):
     return result
 
 
+class Channels:
+    """Independent processes; the original API continues to address main."""
+    MAX_CHANNELS = 4
+
+    def __init__(self, root, state_dir):
+        self.root, self.state_dir = Path(root), Path(state_dir)
+        self.lock, self.closing = threading.RLock(), False
+        self.panels = {"main": Panel(root, state_dir)}
+        directory = self.state_dir / "channels"
+        if directory.exists():
+            for child in sorted(directory.iterdir()):
+                if (len(self.panels) < self.MAX_CHANNELS and (child / "config.json").is_file() and not child.is_symlink()
+                        and re.fullmatch(r"channel-[2-4]", child.name)):
+                    self.panels[child.name] = Panel(root, child)
+
+    def get(self, channel):
+        with self.lock:
+            if channel not in self.panels:
+                raise APIError(404, "channel_not_found", "Canale non trovato.")
+            return self.panels[channel]
+
+    def state(self):
+        with self.lock:
+            result = []
+            for key, panel in self.panels.items():
+                with panel.lock:
+                    result.append({"id": key, "name": panel.config["name"], "phase": panel.phase,
+                                   "process_alive": panel.run is not None and panel.run.process.poll() is None})
+            return {"limit": self.MAX_CHANNELS, "channels": result}
+
+    def create(self, payload):
+        if not isinstance(payload, dict) or set(payload) != {"name"}:
+            raise APIError(422, "invalid_request", "Indica soltanto il nome del nuovo canale.")
+        config = validate_config(dict(DEFAULT_CONFIG, name=payload["name"]))
+        with self.lock:
+            if self.closing:
+                raise APIError(503, "panel_closing", "Il pannello si sta arrestando.")
+            if len(self.panels) >= self.MAX_CHANNELS:
+                raise APIError(409, "channel_limit", "Questo banco gestisce fino a quattro canali.")
+            number = next(i for i in range(2, 5) if f"channel-{i}" not in self.panels)
+            channel = f"channel-{number}"
+            config.update(input_url=f"udp://127.0.0.1:{12000 + number * 10}",
+                          output_url=f"udp://127.0.0.1:{13000 + number * 10}")
+            panel = Panel(self.root, self.state_dir / "channels" / channel)
+            panel.save_config({"revision": panel.revision, "config": config})
+            self.panels[channel] = panel
+            return {"id": channel, "state": panel.state()}
+
+    def action(self, channel, kind, payload):
+        with self.lock:
+            if self.closing:
+                raise APIError(503, "panel_closing", "Il pannello si sta arrestando.")
+            panel = self.get(channel)
+            with panel.lock:
+                source = urlsplit(panel.config["input_url"])
+                for key, other in self.panels.items():
+                    if key == channel:
+                        continue
+                    with other.lock:
+                        if not other._busy():
+                            continue
+                        peer = urlsplit(other.config["input_url"])
+                        if source.scheme in {"udp", "rtp"} and peer.scheme in {"udp", "rtp"}:
+                            ports = {source.port, source.port + (source.scheme == "rtp")}
+                            peer_ports = {peer.port, peer.port + (peer.scheme == "rtp")}
+                            if ports & peer_ports:
+                                raise APIError(409, "input_in_use", "Usa porte di ingresso UDP/RTP distinte per i canali attivi.")
+                        output, peer_output = urlsplit(panel.config["output_url"]), urlsplit(other.config["output_url"])
+                        if kind == "start" and (output.hostname, output.port) == (peer_output.hostname, peer_output.port):
+                            raise APIError(409, "output_in_use", "Questa uscita è già usata da un altro canale attivo.")
+                return panel.action(kind, payload)
+
+    def close(self):
+        with self.lock:
+            self.closing = True
+            panels = list(self.panels.values())
+            for panel in panels:
+                with panel.lock:
+                    panel.closing = True
+        workers = [threading.Thread(target=panel.close) for panel in panels]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join()
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "OBEPanel/0.1"
 
@@ -656,7 +742,23 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self._guard()
             path = urlsplit(self.path).path
-            panel = self.server.panel
+            channels = self.server.channels
+            if path == "/api/channels":
+                if self.command == "GET":
+                    self._reply(200, channels.state())
+                elif self.command == "POST":
+                    self._reply(201, channels.create(self._body()))
+                else:
+                    raise APIError(405, "method_not_allowed", "Metodo non consentito.")
+                return
+            channel = "main"
+            if path.startswith("/api/channels/"):
+                match = re.fullmatch(r"/api/channels/(main|channel-[2-4])/([a-z-]+)", path)
+                if not match:
+                    raise APIError(404, "not_found", "Risorsa non disponibile.")
+                channel, resource = match.groups()
+                path = "/api/" + resource
+            panel = channels.get(channel)
             if self.command == "GET" and path == "/api/state":
                 self._reply(200, panel.state())
             elif self.command == "GET" and path in ASSETS:
@@ -669,7 +771,7 @@ class Handler(BaseHTTPRequestHandler):
             elif self.command == "PUT" and path == "/api/config":
                 self._reply(200, panel.save_config(self._body()))
             elif self.command == "POST" and path in {"/api/probe", "/api/start"}:
-                self._reply(202, panel.action(path.rsplit("/", 1)[1], self._body()))
+                self._reply(202, channels.action(channel, path.rsplit("/", 1)[1], self._body()))
             elif self.command == "POST" and path == "/api/stop":
                 if self._body():
                     raise APIError(422, "invalid_request", "L'arresto richiede un oggetto JSON vuoto.")
@@ -696,9 +798,9 @@ def main():
     panel = None
     server = None
     try:
-        panel = Panel(args.root, args.state_dir)
+        panel = Channels(args.root, args.state_dir)
         server = ThreadingHTTPServer((args.bind, args.port), Handler)
-        server.panel = panel
+        server.channels = panel
         server.static_dir = Path(__file__).resolve().parent / "static"
 
         def shutdown(signum, frame):

@@ -1,6 +1,6 @@
 # Webpanel OBE
 
-Console scura in italiano per configurare e controllare **un encoder locale**.
+Console scura in italiano per configurare e controllare **fino a quattro encoder locali**.
 Usa la build URL/SRT già compilata e aggiunge un servizio Python senza nuove
 dipendenze. Non modifica il server Uno4, i router o un encoder avviato altrove.
 
@@ -142,5 +142,20 @@ di accessibilità. Nessuna richiesta a servizi esterni; console pulita dopo il
 ricaricamento con il servizio disponibile.
 
 Restano fuori da questa versione preview video, livelli audio, statistiche SRT,
-account/ruoli, più encoder e il collaudo prolungato. Contratto API:
+account/ruoli e il collaudo prolungato. Contratto API:
 [webpanel/CONTRACT.md](../webpanel/CONTRACT.md).
+
+### Multicanale
+
+Il selettore **Canale** mostra nome e stato; **Nuovo canale** crea un profilo
+indipendente, fino a quattro. Stop, configurazione, log e misure riguardano il
+canale selezionato. Cambiare scheda non ferma gli altri encoder; allo spegnimento
+del servizio vengono arrestati tutti i processi posseduti.
+Gli ingressi UDP/RTP e le destinazioni devono usare porte distinte fra i canali.
+Dimensionare CPU e memoria con il carico reale prima dell'uso prolungato.
+
+`python3 tests/webpanel.py` include isolamento, persistenza, limite e conflitti.
+`docker exec obe-webpanel-next python3 tests/webpanel-multichannel-live.py`
+verifica due encoder reali contemporanei PAL/1080i, stop indipendente e decodifica.
+Usare esclusivamente un servizio di collaudo fermo: il test salva e ripristina
+i profili e crea il secondo canale se manca.

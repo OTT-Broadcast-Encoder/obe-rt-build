@@ -16,3 +16,4 @@
 @media(max-width:1270px){.stream-readings{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:700px){.stream-telemetry{margin-top:28px;padding:18px 16px}.stream-readings{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 16px}.stream-readings dd{font-size:23px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+.channel-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap}.channel-toolbar label{color:var(--muted)}.channel-toolbar select{min-width:180px;max-width:100%;background:#162127;color:#e4ecef;border:1px solid #344b53;padding:10px;border-radius:4px}.channel-toolbar span{font-size:12px;color:#a3b8c2}.channel-toolbar button{min-height:42px}@media(max-width:600px){.channel-toolbar select{flex:1;min-width:140px}.channel-toolbar span{flex-basis:100%}}
