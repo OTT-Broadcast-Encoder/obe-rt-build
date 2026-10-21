@@ -10,6 +10,8 @@ export PYTHONPATH="$PYTHON_SITE"
 export LD_LIBRARY_PATH="$PREFIX/lib:$PYTHON_SITE/vapoursynth:$PWD/NDI/sdk/lib/x86_64-linux-gnu"
 mkdir -p tests/.build
 
+bash tests/avc-preset.sh
+
 cc -g -fsanitize=address,undefined obe-rt/tests/metadata-allocation.c \
     -o tests/.build/metadata-allocation
 tests/.build/metadata-allocation
