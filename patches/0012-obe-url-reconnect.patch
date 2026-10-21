@@ -1,0 +1,242 @@
+diff --git a/input/lavf/lavf.c b/input/lavf/lavf.c
+--- a/input/lavf/lavf.c
++++ b/input/lavf/lavf.c
+@@ -24,7 +24,9 @@
+     struct SwsContext *sws;
+     int index[STREAMS];
+     int video_format;
+-    int64_t deadline, origin, wall_start, last[STREAMS];
++    int64_t deadline, origin, wall_start, pace_pts, last[STREAMS];
++    int64_t duration[STREAMS], last_seen[STREAMS];
++    unsigned session_streams;
+     unsigned frames[STREAMS];
+     obe_raw_frame_t *pending;
+ } url_input_t;
+@@ -52,6 +54,26 @@
+         ctx->pending->release_frame( ctx->pending );
+         ctx->pending = NULL;
+     }
++}
++
++/* A reconnect owns a new FFmpeg session, but keeps OBE's queues and clocks. */
++static void close_session( url_input_t *ctx )
++{
++    release_pending( ctx );
++    swr_free( &ctx->swr );
++    sws_freeContext( ctx->sws );
++    ctx->sws = NULL;
++    av_packet_free( &ctx->packet );
++    av_frame_free( &ctx->frame );
++    for( int i = 0; i < STREAMS; i++ )
++    {
++        av_frame_free( &ctx->first[i] );
++        avcodec_free_context( &ctx->decoder[i] );
++    }
++    avformat_close_input( &ctx->format );
++    av_dict_free( &ctx->options );
++    ctx->origin = AV_NOPTS_VALUE;
++    ctx->session_streams = 0;
+ }
+ 
+ static void close_input( void *opaque )
+@@ -60,18 +82,7 @@
+     if( ctx->params )
+         fprintf(stderr, "URL input: delivered %u video frames and %u audio blocks\n",
+                 ctx->frames[VIDEO], ctx->frames[AUDIO]);
+-    release_pending( ctx );
+-    swr_free( &ctx->swr );
+-    sws_freeContext( ctx->sws );
+-    av_packet_free( &ctx->packet );
+-    av_frame_free( &ctx->frame );
+-    for( int i = 0; i < STREAMS; i++ )
+-    {
+-        av_frame_free( &ctx->first[i] );
+-        avcodec_free_context( &ctx->decoder[i] );
+-    }
+-    avformat_close_input( &ctx->format );
+-    av_dict_free( &ctx->options );
++    close_session( ctx );
+     if( ctx->device )
+         destroy_device( ctx->device );
+     if( ctx->probe )
+@@ -133,7 +144,7 @@
+                 if( ctx->format->streams[j]->id == ctx->params->device->input_streams[i]->pid &&
+                     ctx->format->streams[j]->codecpar->codec_type == (i == VIDEO ? AVMEDIA_TYPE_VIDEO : AVMEDIA_TYPE_AUDIO) )
+                     index = j;
+-            if( index < 0 ) return AVERROR_INPUT_CHANGED;
++            if( index < 0 ) return AVERROR_STREAM_NOT_FOUND;
+             ctx->index[i] = index;
+         }
+     for( int i = 0; i < STREAMS; i++ )
+@@ -247,14 +258,27 @@
+     timestamp = av_rescale_q( timestamp, st->time_base, (AVRational){1, OBE_CLOCK} );
+     if( ctx->origin == AV_NOPTS_VALUE )
+     {
+-        ctx->origin = timestamp - OBE_CLOCK;
++        /* Resume the media timeline at the next video frame. The outage is
++         * a pause in output, not a large PTS gap in the running encoder/mux.
++         * Audio before this video anchor is discarded; both tracks then use
++         * the same offset, even if the restarted sender reset its timestamps. */
++        if( ctx->frames[VIDEO] && kind != VIDEO )
++            return 0;
++        ctx->pace_pts = ctx->frames[VIDEO] ? ctx->last[VIDEO] + ctx->duration[VIDEO] : OBE_CLOCK;
++        ctx->origin = timestamp - ctx->pace_pts;
+         ctx->wall_start = av_gettime_relative();
+     }
+     int64_t pts = timestamp - ctx->origin;
++    if( kind == AUDIO && !(ctx->session_streams & (1 << AUDIO)) && ctx->frames[AUDIO] &&
++        pts < ctx->last[AUDIO] + ctx->duration[AUDIO] )
++        return 0; /* Do not replay samples already delivered before reconnect. */
++    /* The first audio after reopening may bridge a gap left while video
++     * alone continued. Its encoder rebases on that discontinuity. */
+     if( pts < 0 || (ctx->last[kind] != AV_NOPTS_VALUE &&
+-        (pts <= ctx->last[kind] || pts - ctx->last[kind] > 2 * OBE_CLOCK)) )
++        (pts <= ctx->last[kind] || ((ctx->session_streams & (1 << kind)) &&
++         pts - ctx->last[kind] > 2 * OBE_CLOCK))) )
+         return AVERROR_INVALIDDATA;
+-    int64_t due = ctx->wall_start + av_rescale( pts - OBE_CLOCK, 1000000, OBE_CLOCK );
++    int64_t due = ctx->wall_start + av_rescale( pts - ctx->pace_pts, 1000000, OBE_CLOCK );
+     if( due - av_gettime_relative() > 2000000 )
+         return AVERROR_INVALIDDATA;
+     int64_t remaining;
+@@ -348,10 +372,23 @@
+     avfm_set_hw_received_time( &rf->avfm );
+     obe_int_input_stream_t *video = ctx->params->device->input_streams[VIDEO];
+     avfm_set_video_interval_clk( &rf->avfm, av_rescale(video->timebase_num, OBE_CLOCK, video->timebase_den) );
+-    if( kind == VIDEO ) obe_clock_tick( ctx->h, pts );
++    if( kind == VIDEO )
++    {
++        if( ctx->frames[VIDEO] && !(ctx->session_streams & (1 << VIDEO)) )
++        {
++            pthread_mutex_lock(&ctx->h->drop_mutex);
++            ctx->h->video_encoder_drop = 1;
++            pthread_mutex_unlock(&ctx->h->drop_mutex);
++        }
++        obe_clock_tick( ctx->h, pts );
++    }
+     if( (ret = add_to_filter_queue(ctx->h, rf)) < 0 ) return ret;
+     ctx->pending = NULL;
+     ctx->last[kind] = pts;
++    ctx->duration[kind] = kind == VIDEO ? av_rescale(s->timebase_num, OBE_CLOCK, s->timebase_den) :
++                                        av_rescale(f->nb_samples, OBE_CLOCK, 48000);
++    ctx->last_seen[kind] = av_gettime_relative();
++    ctx->session_streams |= 1 << kind;
+     ctx->frames[kind]++;
+     return 0;
+ }
+@@ -432,39 +469,92 @@
+     return NULL;
+ }
+ 
++static int receive_input( url_input_t *ctx )
++{
++    int ret;
++    ctx->deadline = av_gettime_relative() + 2000000;
++    ret = av_read_frame(ctx->format, ctx->packet);
++    cancellation_point();
++    if( ret == AVERROR_EOF )
++    {
++        for( int i = 0; i < STREAMS; i++ )
++            if( ctx->decoder[i] && (ret = decode_packet(ctx, i, NULL, 0)) < 0 ) return ret;
++        return AVERROR_EOF;
++    }
++    if( ret < 0 ) return ret;
++    for( int i = 0; i < STREAMS; i++ )
++        if( ctx->packet->stream_index == ctx->index[i] && (ret = decode_packet(ctx, i, ctx->packet, 0)) < 0 )
++            return ret;
++    av_packet_unref(ctx->packet);
++    /* Traffic on one PID must not keep a dead companion track alive forever.
++     * Give resumed audio time to catch up with blocks already delivered while
++     * video was missing. Video must recover within the normal limit to avoid
++     * filling downstream queues with audio alone. */
++    for( int i = 0; i < STREAMS; i++ )
++        if( ctx->decoder[i] && av_gettime_relative() - ctx->last_seen[i] >
++            ((i == AUDIO && ctx->frames[AUDIO] && !(ctx->session_streams & (1 << AUDIO))) ? 5000000 : 2000000) )
++            return AVERROR(ETIMEDOUT);
++    return 0;
++}
++
++static int retryable( int error )
++{
++    return error != AVERROR(ENOMEM) && error != AVERROR(ENOBUFS) &&
++           error != AVERROR(EINVAL) && error != AVERROR(ENOTSUP) &&
++           error != AVERROR_INPUT_CHANGED && error != AVERROR_DECODER_NOT_FOUND &&
++           error != AVERROR_PROTOCOL_NOT_FOUND && error != AVERROR_HTTP_BAD_REQUEST &&
++           error != AVERROR_HTTP_UNAUTHORIZED && error != AVERROR_HTTP_FORBIDDEN;
++}
++
+ static void *start_input( void *opaque )
+ {
+     obe_input_params_t *params = opaque;
+     url_input_t ctx = { .h = params->h, .params = params, .origin = AV_NOPTS_VALUE,
+                        .last = { AV_NOPTS_VALUE, AV_NOPTS_VALUE } };
+-    int ret;
++    int ret, retry_seconds = 1;
++    unsigned attempts = 0;
+     pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+     pthread_cleanup_push(close_input, &ctx);
+-    ctx.deadline = av_gettime_relative() + 5000000;
+-    if( (ret = open_input(&ctx, params->device->user_opts.location)) < 0 ) goto end;
+-    /* Track IDs were remapped in open_input; adding/removing audio still
+-     * requires probing and rebuilding the configured pipeline. */
+-    if( (params->device->num_input_streams == 2) != (ctx.index[AUDIO] >= 0) )
+-    { ret = AVERROR_INPUT_CHANGED; goto end; }
+-    fprintf(stderr, "URL input: receiving video%s\n", ctx.decoder[AUDIO] ? " and stereo audio" : "");
+     while( 1 )
+     {
+-        ctx.deadline = av_gettime_relative() + 2000000;
+-        ret = av_read_frame(ctx.format, ctx.packet);
+         cancellation_point();
+-        if( ret == AVERROR_EOF )
+-        {
+-            for( int i = 0; i < STREAMS; i++ )
+-                if( ctx.decoder[i] && (ret = decode_packet(&ctx, i, NULL, 0)) < 0 ) goto end;
+-            ret = AVERROR_EOF; break;
+-        }
+-        if( ret < 0 ) break;
+-        for( int i = 0; i < STREAMS; i++ )
+-            if( ctx.packet->stream_index == ctx.index[i] && (ret = decode_packet(&ctx, i, ctx.packet, 0)) < 0 ) goto end;
+-        av_packet_unref(ctx.packet);
+-    }
+-end:
+-    report_error("stopped (restart input after fixing the source)", ret);
++        ctx.deadline = av_gettime_relative() + 5000000;
++        ret = open_input(&ctx, params->device->user_opts.location);
++        if( ret >= 0 && (params->device->num_input_streams == 2) != (ctx.index[AUDIO] >= 0) )
++            ret = AVERROR_INPUT_CHANGED;
++        if( ret >= 0 )
++        {
++            int announced = 0;
++            unsigned expected_streams = ctx.decoder[AUDIO] ? 3 : 1;
++            ctx.last_seen[VIDEO] = ctx.last_seen[AUDIO] = av_gettime_relative();
++            while( (ret = receive_input(&ctx)) >= 0 )
++                if( ctx.session_streams == expected_streams )
++                {
++                    if( !announced )
++                    {
++                        fprintf(stderr, "URL input: %s video%s\n", attempts ? "reconnected; receiving" : "receiving",
++                                ctx.decoder[AUDIO] ? " and stereo audio" : "");
++                        announced = 1;
++                    }
++                    /* Do not reset backoff on a connection which only yields
++                     * a few frames before failing again. */
++                    if( av_gettime_relative() - ctx.wall_start >= 1000000 )
++                        retry_seconds = 1;
++                }
++        }
++        close_session(&ctx);
++        if( !retryable(ret) ) break;
++        report_error("connection lost", ret);
++        fprintf(stderr, "URL input: retrying in %d seconds (attempt %u)\n", retry_seconds, ++attempts);
++        int64_t retry_at = av_gettime_relative() + retry_seconds * 1000000LL;
++        while( av_gettime_relative() < retry_at )
++        {
++            cancellation_point();
++            av_usleep(10000);
++        }
++        retry_seconds = MIN(retry_seconds * 2, 5);
++    }
++    report_error("stopped (configuration or format requires a new probe)", ret);
+     pthread_cleanup_pop(1);
+     return NULL;
+ }

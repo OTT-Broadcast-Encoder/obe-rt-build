@@ -56,6 +56,10 @@ header subprojects in its upstream wrap files.
   video signalling, and handles bounded network reads and queue growth. It
   also fixes the MPEG-TS statistics lifecycle for current libltntstools and
   keeps URL audio timing independent of hardware latency compensation.
+- `0012-obe-url-reconnect.patch` retries transient URL input failures with
+  cancellable delays of 1, 2, 4 and then 5 seconds. Reopened sessions keep the
+  configured streams and resume the media timeline after sender timestamp
+  resets; unsupported format changes still require a new probe.
 - The old ZVBI/libyuv/x265/FFmpeg patches remain as historical files but are
   not applied to this snapshot. x265 4.2 already contains the SEI allocation
   fixes; current FFmpeg includes the Binutils fix. PNG dependencies are
@@ -75,3 +79,9 @@ NV12 strides and guards, x264 speed control, MPEG-2/H.264/HEVC software encoding
 file recording paths and contents, embedded VSScript, Python R81, and OBE CLI
 startup/quit. The FIFO/libyuv/x264 harness also ran with AddressSanitizer.
 All compatibility patches were checked against their pinned Git base trees.
+
+URL reconnection was rebuilt and checked with `tests/input-url-reconnect.py`:
+three sender restarts with reset timestamps, loss of only audio or video, and
+shutdown during silence/backoff. UDP PAL input also passed its regression check.
+Patches `0008`, `0011` and `0012` reproduce the tested URL reader on the pinned
+OBE revision; Internet transport and sustained operation still need validation.
