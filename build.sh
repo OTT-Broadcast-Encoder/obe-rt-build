@@ -74,7 +74,7 @@ elif [ "$1" == "installdeps" ]; then
                             libkmod-dev \
                             libdw-dev \
                             libpixman-1-dev \
-                            libcairo-dev \
+                            libcairo2-dev \
                             flex \
                             bison
 

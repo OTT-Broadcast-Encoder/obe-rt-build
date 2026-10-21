@@ -1,0 +1,5 @@
+**
+!build.sh
+!docker/
+!docker/obe-builder/
+!docker/obe-builder/Dockerfile.ubuntu
