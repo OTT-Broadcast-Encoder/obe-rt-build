@@ -17,6 +17,7 @@ vaapi/intel-*/
 vaapi/libva*
 libltntstools/
 ffmpeg/
+srt/
 json-c/
 libwebsockets/
 libzvbi/
@@ -27,3 +28,4 @@ vapoursynth/
 vs-plugins/vapoursynth-*
 vaapi/libdrm-*.tar.xz
 tests/.build/
+tests/__pycache__/

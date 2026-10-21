@@ -1,6 +1,6 @@
 # Ingresso video da URL
 
-Il modulo `lavf_input` riceve una sorgente di rete, decodifica video e audio tramite FFmpeg e li inoltra all'encoder e al mux MPEG-TS di OBE. Non richiede SDI né un file di ingresso. Questo primo incremento serve al banco di prova locale; il percorso Internet con SRT resta nella [roadmap](../tasks/plan.md).
+Il modulo `lavf_input` riceve una sorgente di rete, decodifica video e audio tramite FFmpeg e li inoltra all'encoder e al mux MPEG-TS di OBE. Non richiede SDI né un file di ingresso. Sono collaudati localmente UDP/RTP e [SRT cifrato con riconnessione](input-srt.md); il percorso SRT attraverso il NAT/gateway Internet resta da verificare.
 
 ## Ambito attuale
 
@@ -8,7 +8,8 @@ Il modulo `lavf_input` riceve una sorgente di rete, decodifica video e audio tra
 | --- | --- |
 | Trasporto di riferimento | MPEG-TS su `udp://` oppure MPEG-TS incapsulato in RTP su `rtp://`; i casi automatici sono descritti sotto. RTP non significa supporto già verificato di ogni payload RTP. |
 | Altri URL ammessi | `http://`, `https://`, `rtsp://`, `tcp://`; richiedono protocolli/demuxer presenti nella build FFmpeg e un collaudo specifico. Nessuna dichiarazione di interoperabilità con tutti i server o flussi. |
-| SRT e file | SRT non è abilitato nella build attuale. Percorsi locali e `file://` non sono accettati dal modulo. |
+| SRT | `srt://` caller/listener abilitato con libSRT 1.5.7 e provato localmente con cifratura e riconnessione. Passphrase solo tramite `OBE_SRT_PASSPHRASE`; vedere la [guida dedicata](input-srt.md). |
+| File | Percorsi locali e `file://` non sono accettati dal modulo. |
 | Selezione | Un video e al massimo un audio, scelti automaticamente da FFmpeg; selezione manuale di programma/PID/traccia non ancora esposta. Il video è obbligatorio, l'audio opzionale. |
 | Video | SDR YUV planare 4:2:0 o 4:2:2 a 8/10 bit; PAL interlacciato, NTSC interlacciato, 1080i50/59,94/60 e progressivo fino a 1920×1080 e 60 fotogrammi/s. HDR PQ/HLG e altri formati vengono rifiutati. Questa è la matrice accettata dal codice, non una certificazione di tutti i casi. |
 | Audio | Se presente, deve essere stereo a 48 kHz; conversione interna in PCM planare. Non sono implementati ricampionamento da altre frequenze e downmix multicanale. |
@@ -35,7 +36,7 @@ Nel primo terminale, avviare una sorgente sintetica PAL con campi TFF da istanti
 docker run --rm -it --cpus=6 --memory=8g --network host \
     --mount "type=bind,source=$PWD,target=/work" \
     -e LD_LIBRARY_PATH=/work/target-root/usr/local/lib:/work/NDI/sdk/lib/x86_64-linux-gnu \
-    obe-rt-build:current-2026-10-21 \
+    obe-rt-build:srt-2026-10-21 \
     /work/target-root/usr/local/bin/ffmpeg -hide_banner \
     -re -f lavfi -i 'testsrc2=size=720x576:rate=50' \
     -re -f lavfi -i 'sine=frequency=997:sample_rate=48000' \
@@ -66,7 +67,7 @@ start
 EOF
 docker run --rm -it --cpus=6 --memory=8g --network host \
     --mount "type=bind,source=$PWD,target=/work" \
-    obe-rt-build:current-2026-10-21 ./run.sh -c tests/.build/url-demo.cfg
+    obe-rt-build:srt-2026-10-21 ./run.sh -c tests/.build/url-demo.cfg
 ```
 
 Scrivere `quit` nella CLI per terminare e fermare il generatore con Ctrl+C. La configurazione usa gli ID 0 e 1 del primo probe in un processo nuovo, come i test automatici. Per sorgenti senza audio eliminare la riga `set stream opts 1:...`. `thread=2` è il nome dell'opzione della CLI OBE; `threads` è invece un'opzione di FFmpeg.
@@ -82,7 +83,7 @@ Il test usa un generatore locale e la pipeline completa `URL → OBE AVC/MP2 →
 ```sh
 docker run --rm --cpus=6 --memory=8g \
     --mount "type=bind,source=$PWD,target=/work" \
-    obe-rt-build:current-2026-10-21 python3 tests/input-url.py
+    obe-rt-build:srt-2026-10-21 python3 tests/input-url.py
 ```
 
 Mittente e ricevitore del test sono nello stesso container: qui non serve `--network host`. Per un solo caso aggiungere, per esempio, `--case udp-1080i50`.
@@ -94,13 +95,13 @@ La riconnessione ha un test dedicato: interrompe il mittente UDP, lo riavvia sul
 ```sh
 docker run --rm --cpus=6 --memory=8g \
     --mount "type=bind,source=$PWD,target=/work" \
-    obe-rt-build:current-2026-10-21 python3 tests/input-url-reconnect.py
+    obe-rt-build:srt-2026-10-21 python3 tests/input-url-reconnect.py
 ```
 
 Gli artefatti sono in `tests/.build/url-reconnect-*`; `--case repeat` verifica tre ripartenze nello stesso processo e la continuità dei timestamp, `--case resume` una ripartenza, `--case silent` e `--case backoff` l'arresto senza sorgente e durante l'attesa. I casi `--case track-loss` e `--case video-loss` filtrano per 3,2 secondi soltanto il PID audio o video, lasciando proseguire l'altra traccia, e controllano il recupero di entrambe.
 
-Rimangono da collaudare il collegamento reale, perdita/jitter prolungati, matrice completa dei formati e gli altri protocolli. Per Internet, l'accesso a 1 Gbit/s non equivale a una LAN: la prossima fase è abilitare e provare SRT con contribuzione compressa e margine misurato per rete e CPU.
+Rimangono da collaudare il collegamento reale, perdita/jitter prolungati, matrice completa dei formati e gli altri protocolli. SRT è ora abilitato e ha superato i test locali cifrati come caller e listener, inclusi riavvio del mittente con PTS azzerati e chiave errata. Nessuna prova SRT sulla WAN è riuscita: la raggiungibilità attraverso il NAT/gateway e il margine effettivo di rete e CPU devono ancora essere verificati. L'accesso a 1 Gbit/s non equivale a una LAN.
 
 Il buffer di ricezione richiesto di default è 4 MiB: in RTP evita la perdita del burst iniziale mentre i pacchetti del probe vengono consumati al ritmo video. Il kernel può applicare un limite inferiore; nessun parametro dell’host viene modificato automaticamente. Nei test su IP numerico, `quit` durante assenza o riconnessione ha richiesto meno di cinque secondi; il probe UDP senza dati circa due secondi con `max-probe-time=2`.
 
-La build include `patches/0011-obe-network-input.patch` e `patches/0012-obe-url-reconnect.patch`, applicate dopo la patch `0008` sulla revisione OBE fissata. `tests/smoke-current.sh` verifica anche blocchi audio URL da 2048/4096 campioni e PTS senza compensazioni hardware. Sono stati corretti l’inizializzazione delle statistiche del mux con libltntstools corrente e il rilascio del mutex della coda in caso di allocazione fallita.
+La build include `patches/0011-obe-network-input.patch` e `patches/0012-obe-url-reconnect.patch`, applicate dopo la patch `0008` sulla revisione OBE fissata. La patch `0015-obe-srt-input.patch` aggiunge SRT e la configurazione cifrata tramite ambiente; `0014-ffmpeg-srt-secret-log.patch` impedisce a FFmpeg di stampare il valore della passphrase quando fallisce l'impostazione dell'opzione. `tests/smoke-current.sh` verifica anche blocchi audio URL da 2048/4096 campioni e PTS senza compensazioni hardware. Sono stati corretti l’inizializzazione delle statistiche del mux con libltntstools corrente e il rilascio del mutex della coda in caso di allocazione fallita.

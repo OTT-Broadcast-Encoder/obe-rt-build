@@ -14,6 +14,13 @@ cc -g -fsanitize=address,undefined obe-rt/tests/metadata-allocation.c \
     -o tests/.build/metadata-allocation
 tests/.build/metadata-allocation
 
+cc -g -fsanitize=address,undefined -Iobe-rt $(pkg-config --cflags libavutil) \
+    obe-rt/tests/srt-options.c -o tests/.build/srt-options $(pkg-config --libs --static libavutil)
+tests/.build/srt-options
+cc -g $(pkg-config --cflags libavutil) tests/ffmpeg-secret-log.c \
+    -o tests/.build/ffmpeg-secret-log $(pkg-config --libs --static libavutil)
+tests/.build/ffmpeg-secret-log
+
 cc -O2 -g -Iobe-rt -Iobe-rt/obe $(pkg-config --cflags libavcodec) \
     tests/audio-encoders.c obe-rt/encoders/audio/lavc/lavc.c \
     obe-rt/encoders/audio/mp2/twolame.c obe-rt/encoders/audio/audio_enc_params.c \

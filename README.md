@@ -10,9 +10,11 @@ input for testing without SDI (in Italian).
 The [LTN upstream audit](docs/upstream-ltn-2026-10-21.md) records the library
 rebase, selected encoder fixes, validation and deferred upstream changes.
 
-The [URL input guide](docs/input-url.md) describes the first UDP/RTP MPEG-TS
-input implementation, a live synthetic source, CLI configuration and its
-integration tests. SRT and the Internet contribution link remain follow-up work.
+The [URL input guide](docs/input-url.md) describes UDP/RTP MPEG-TS input,
+a live synthetic source, CLI configuration and integration tests. The
+[SRT guide](docs/input-srt.md) covers encrypted caller/listener input and
+automatic recovery after sender restarts. Local tests passed; no SRT WAN test
+has succeeded yet, with listener reachability through the NAT/gateway unresolved.
 
 ## Isolated Ubuntu build
 
@@ -20,10 +22,10 @@ From the repository root, build the toolchain image and run the build inside it:
 
 ```sh
 docker build -t obe-rt-build:ubuntu24.04 -f docker/obe-builder/Dockerfile.ubuntu .
-docker build -t obe-rt-build:current-2026-10-21 -f docker/obe-builder/Dockerfile.current .
+docker build -t obe-rt-build:srt-2026-10-21 -f docker/obe-builder/Dockerfile.current .
 docker run --name obe-rt-build-current --cpus=6 --memory=8g \
     --mount "type=bind,source=$PWD,target=/work" \
-    -e GIT_TERMINAL_PROMPT=0 -e JOBS=6 obe-rt-build:current-2026-10-21
+    -e GIT_TERMINAL_PROMPT=0 -e JOBS=6 obe-rt-build:srt-2026-10-21
 ```
 
 System dependencies stay in the container, and Python packages use its virtual
@@ -40,7 +42,7 @@ libraries and Python module. `run.sh` supplies the library and Python paths:
 ```sh
 docker run --rm -it --cpus=6 --memory=8g \
     --mount "type=bind,source=$PWD,target=/work" \
-    obe-rt-build:current-2026-10-21 ./run.sh
+    obe-rt-build:srt-2026-10-21 ./run.sh
 ```
 
 Use a fresh checkout for this snapshot: `.skip` files reuse completed builds
@@ -55,13 +57,20 @@ Run the software integration checks in the same isolated environment:
 ```sh
 docker run --rm --cpus=6 --memory=8g \
     --mount "type=bind,source=$PWD,target=/work" \
-    obe-rt-build:current-2026-10-21 ./tests/smoke-current.sh
+    obe-rt-build:srt-2026-10-21 ./tests/smoke-current.sh
 ```
 
 The checks exercise OBE's audio encoders and PES timestamps, decoded audio,
 FIFO growth/reset, file output names and bytes, padded NV12 conversion, x264 speed control, FFmpeg software
 encoders, embedded VSScript, the Python module, and CLI startup.
 See [LIBRARIES.md](LIBRARIES.md) for source versions and compatibility patches.
+
+Run encrypted SRT recovery and wrong-passphrase checks with
+`python3 tests/input-srt.py` in the same container, using `-w /work`.
+For a live encrypted SRT input, supply the 10–79 byte passphrase through
+`OBE_SRT_PASSPHRASE` in OBE's environment; crypto options in OBE URLs are rejected.
+If launching through Docker, export the variable and pass it with
+`-e OBE_SRT_PASSPHRASE`, keeping its value out of the command line.
 
 ## Original CentOS instructions
 

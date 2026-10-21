@@ -5,6 +5,7 @@ JOBS=${JOBS:-6}
 BMDSDK_VER=10.8.5
 BMDSDK_TAG=ad4195d3433e2aeeaa42e942bfea378110c9a283
 FFMPEG_TAG=n9.0.2
+SRT_TAG=899348d8318eb9a3c5a5b6ec43c4a1114288773a # v1.5.7
 LIBYUV_TAG=47ba8e2160b71a7cf95c0720cd8944ab771e533e
 LIBZVBI_TAG=v0.2.45
 LIBKLVANC_TAG=vid.obe.1.12.0
@@ -32,6 +33,7 @@ elif [ "$1" == "clean" ]; then
     rm -rf decklink-sdk
     rm -rf fdk-aac
     rm -rf libav-obe ffmpeg
+    rm -rf srt
     rm -rf libmpegts-obe
     rm -rf libyuv
     rm -rf obe-rt
@@ -74,6 +76,7 @@ elif [ "$1" == "installdeps" ]; then
                             libasound2-dev \
                             libbz2-dev \
                             liblzma-dev \
+                            libssl-dev \
                             libfdk-aac-dev \
                             meson \
                             pkg-config \
@@ -182,6 +185,7 @@ if [ ! -d obe-rt ]; then
     git -C obe-rt apply ../patches/0011-obe-network-input.patch
     git -C obe-rt apply ../patches/0012-obe-url-reconnect.patch
     git -C obe-rt apply ../patches/0013-obe-ltn-safety-fixes.patch
+    git -C obe-rt apply ../patches/0015-obe-srt-input.patch
 fi
 
 if [ ! -d x264 ]; then
@@ -196,7 +200,13 @@ if [ ! -d ffmpeg ]; then
     pushd ffmpeg
         git checkout $FFMPEG_TAG
         git apply ../patches/0009-ffmpeg-obe-x264.patch
+        git apply ../patches/0014-ffmpeg-srt-secret-log.patch
     popd
+fi
+
+if [ ! -d srt ]; then
+    git clone https://github.com/Haivision/srt.git
+    git -C srt checkout "$SRT_TAG"
 fi
 
 if [ ! -d libmpegts-obe ]; then
@@ -346,6 +356,18 @@ pushd x264
     fi
 popd
 
+pushd srt
+    if [ ! -f .skip ]; then
+        cmake -S . -B build -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+            -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_SHARED=OFF -DENABLE_STATIC=ON -DENABLE_APPS=ON \
+            -DENABLE_ENCRYPTION=ON -DUSE_ENCLIB=openssl-evp
+        cmake --build build -j"$JOBS"
+        cmake --install build
+        touch .skip
+    fi
+popd
+
 pushd ffmpeg
     if [ ! -f .skip ]; then
         export CFLAGS="-I$PWD/../target-root/usr/local/include -I$PWD/../blackmagic-sdk/10.11.2/Linux/include"
@@ -360,6 +382,7 @@ pushd ffmpeg
             --enable-libfdk-aac \
             --enable-libx264 \
             --enable-libx265 \
+            --enable-libsrt \
             --pkg-config-flags="--static" \
             --enable-gpl \
             --enable-nonfree

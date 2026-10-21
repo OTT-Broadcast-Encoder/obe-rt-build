@@ -1,0 +1,220 @@
+diff --git a/input/lavf/lavf.c b/input/lavf/lavf.c
+index b9cd1e0..151db00 100644
+--- a/input/lavf/lavf.c
++++ b/input/lavf/lavf.c
+@@ -2,6 +2,7 @@
+  * SPDX-License-Identifier: GPL-2.0-or-later */
+ #include "common/common.h"
+ #include "input/input.h"
++#include "srt_options.h"
+ #include <libavformat/avformat.h>
+ #include <libavcodec/avcodec.h>
+ #include <libavutil/time.h>
+@@ -103,22 +104,28 @@ static void report_error( const char *operation, int error )
+ static int open_input( url_input_t *ctx, const char *location )
+ {
+     /* Network URLs only; protocols still depend on the linked FFmpeg build. */
+-    const char *schemes[] = { "udp://", "rtp://", "http://", "https://", "rtsp://", "tcp://" };
++    const char *schemes[] = { "udp://", "rtp://", "http://", "https://", "rtsp://", "tcp://", "srt://" };
+     int valid = 0, ret;
+     for( unsigned i = 0; i < sizeof(schemes)/sizeof(*schemes); i++ )
+         valid |= !strncmp( location, schemes[i], strlen(schemes[i]) );
+     if( !valid )
+     {
+-        fprintf( stderr, "URL input: supported schemes are udp, rtp, http(s), rtsp and tcp\n" );
++        fprintf( stderr, "URL input: supported schemes are udp, rtp, http(s), rtsp, tcp and srt\n" );
+         return AVERROR(EINVAL);
+     }
++    ret = obe_srt_options(location, getenv("OBE_SRT_PASSPHRASE"), &ctx->options);
++    if (ret < 0) {
++        if (ret == AVERROR(EINVAL))
++            fprintf(stderr, "URL input: use OBE_SRT_PASSPHRASE (10-79 bytes) for SRT encryption; crypto options are forbidden in the URL\n");
++        return ret;
++    }
+     ctx->format = avformat_alloc_context();
+     ctx->frame = av_frame_alloc();
+     ctx->packet = av_packet_alloc();
+     if( !ctx->format || !ctx->frame || !ctx->packet )
+         return AVERROR(ENOMEM);
+     ctx->format->interrupt_callback = (AVIOInterruptCB){ interrupted, ctx };
+-    av_dict_set( &ctx->options, "protocol_whitelist", "udp,rtp,tcp,http,https,tls,crypto,httpproxy", 0 );
++    av_dict_set( &ctx->options, "protocol_whitelist", "udp,rtp,tcp,http,https,tls,crypto,httpproxy,srt", 0 );
+     av_dict_set( &ctx->options, "rw_timeout", "2000000", 0 );
+     /* RTP disables libavformat's UDP FIFO. Retain enough socket buffering
+      * while consuming the packets collected by find_stream_info at CFR pace. */
+diff --git a/input/lavf/srt_options.h b/input/lavf/srt_options.h
+new file mode 100644
+index 0000000..8697012
+--- /dev/null
++++ b/input/lavf/srt_options.h
+@@ -0,0 +1,67 @@
++/* SRT encryption policy shared by the URL input and CLI history guard. */
++#ifndef OBE_SRT_OPTIONS_H
++#define OBE_SRT_OPTIONS_H
++
++#include <errno.h>
++#include <string.h>
++#include <strings.h>
++#include <libavutil/dict.h>
++#include <libavutil/error.h>
++
++static inline int obe_srt_hex_digit(unsigned char c)
++{
++    if (c >= '0' && c <= '9') return c - '0';
++    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
++    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
++    return -1;
++}
++
++static inline int obe_srt_url_has_crypto_options(const char *location)
++{
++    if (strncasecmp(location, "srt://", 6)) return 0;
++    const char *end = location + strlen(location);
++    const char *query = memchr(location, '?', end - location);
++    if (!query) return 0;
++    query++;
++    while (query < end) {
++        char name[128];
++        size_t len = 0;
++        while (query < end && *query != '=' && *query != '&') {
++            unsigned char c = *query++;
++            if (c == '%' && end - query >= 2) {
++                int hi = obe_srt_hex_digit(query[0]);
++                int lo = obe_srt_hex_digit(query[1]);
++                if (hi >= 0 && lo >= 0) {
++                    c = (hi << 4) | lo;
++                    query += 2;
++                }
++            }
++            if (len < sizeof(name) - 1) name[len++] = c;
++        }
++        name[len] = 0;
++        if (!strcasecmp(name, "passphrase") || !strcasecmp(name, "pbkeylen") ||
++            !strcasecmp(name, "enforced_encryption") || !strcasecmp(name, "enforcedencryption"))
++            return 1;
++        while (query < end && *query != '&') query++;
++        if (query < end) query++;
++    }
++    return 0;
++}
++
++/* Never put a key in the URL: FFmpeg logs URLs on connection failure, and
++ * query options override dictionary options. A configured key requires AES-256
++ * and matching encryption on the peer. NULL means explicitly unencrypted. */
++static inline int obe_srt_options(const char *location, const char *passphrase,
++                                  AVDictionary **options)
++{
++    if (strncmp(location, "srt://", 6)) return 0;
++    if (obe_srt_url_has_crypto_options(location)) return AVERROR(EINVAL);
++    if (passphrase && (strlen(passphrase) < 10 || strlen(passphrase) > 79))
++        return AVERROR(EINVAL);
++    int ret = av_dict_set(options, "enforced_encryption", "1", 0);
++    if (ret < 0 || !passphrase) return ret;
++    if ((ret = av_dict_set(options, "pbkeylen", "32", 0)) < 0) return ret;
++    return av_dict_set(options, "passphrase", passphrase, 0);
++}
++
++#endif
+diff --git a/obe/Makefile.am b/obe/Makefile.am
+index 15d67cd..633e231 100644
+--- a/obe/Makefile.am
++++ b/obe/Makefile.am
+@@ -73,6 +73,7 @@ obecli_SOURCES += ../mux/ts/ts.c
+ obecli_SOURCES += ../output/ip/ip.c
+ obecli_SOURCES += ../output/file/file.c
+ obecli_SOURCES += ../input/lavf/lavf.c
++obecli_SOURCES += ../input/lavf/srt_options.h
+ obecli_SOURCES += ../input/sdi/ancillary.c
+ obecli_SOURCES += ../input/sdi/sdi.c
+ obecli_SOURCES += ../input/sdi/vbi.c
+diff --git a/obe/obecli.c b/obe/obecli.c
+index a13ef46..835d669 100644
+--- a/obe/obecli.c
++++ b/obe/obecli.c
+@@ -45,6 +45,7 @@
+ #include "obecli.h"
+ #include "obecli-shared.h"
+ #include "common/common.h"
++#include "input/lavf/srt_options.h"
+ #include "ltn_ws.h"
+ 
+ #if HAVE_DTAPI_H
+@@ -2970,6 +2971,14 @@ static int processCommand(char *line_read)
+     if (!strcasecmp(line_read, "exit") || !strcasecmp(line_read, "quit"))
+         return -1;
+ 
++    /* Reject SRT URL credentials before saving history or probing/logging the URL. */
++    for (const char *url = line_read; *url; url++) {
++        if (!strncasecmp(url, "srt://", 6) && obe_srt_url_has_crypto_options(url)) {
++            fprintf(stderr, "SRT crypto options are forbidden in URLs; use OBE_SRT_PASSPHRASE (10-79 bytes)\n");
++            return 0;
++        }
++    }
++
+     add_history(line_read);
+ 
+     int ret = parse_command( line_read, main_commands );
+diff --git a/tests/srt-options.c b/tests/srt-options.c
+new file mode 100644
+index 0000000..4ce5ad6
+--- /dev/null
++++ b/tests/srt-options.c
+@@ -0,0 +1,58 @@
++/* cc -I. -I<prefix>/include tests/srt-options.c -L<prefix>/lib -lavutil -lm
++ * Tests the actual option builder without networking or a libsrt dependency. */
++#include <assert.h>
++#include "input/lavf/srt_options.h"
++
++int main(void)
++{
++    const char *blocked[] = {
++        "srt://host:9000?passphrase=test-value",
++        "srt://host:9000?mode=caller&%70assphrase=test-value",
++        "srt://host:9000?passphrase%00ignored=test-value",
++        "srt://host:9000?pbkeylen=16",
++        "srt://host:9000?enforced_encryption=0",
++        "srt://host:9000?enforcedencryption=0",
++        "srt://host:9000?%65nforced_encryption=0",
++        "srt://host:9000?streamid=a b&passphrase=test-value",
++        "srt://host:9000?streamid=a\tb&passphrase=test-value",
++        "srt://host:9000?streamid=a,b&passphrase=test-value",
++    };
++    for (unsigned i = 0; i < sizeof(blocked) / sizeof(*blocked); i++) {
++        AVDictionary *options = NULL;
++        assert(obe_srt_url_has_crypto_options(blocked[i]));
++        assert(obe_srt_options(blocked[i], NULL, &options) == AVERROR(EINVAL));
++        assert(options == NULL);
++    }
++    assert(!obe_srt_url_has_crypto_options("srt://host:9000?mode=caller&latency=200000"));
++    assert(!obe_srt_url_has_crypto_options("srt://host:9000?streamid=passphrase"));
++    assert(obe_srt_url_has_crypto_options("SRT://host:9000?Passphrase=test-value"));
++    assert(!obe_srt_url_has_crypto_options("srt://host:9000 name=passphrase"));
++    assert(!obe_srt_url_has_crypto_options("udp://host:9000?passphrase=other-protocol"));
++
++    AVDictionary *options = NULL;
++    assert(obe_srt_options("udp://host:9000", "short", &options) == 0);
++    assert(options == NULL);
++    assert(obe_srt_options("srt://host:9000", NULL, &options) == 0);
++    assert(!strcmp(av_dict_get(options, "enforced_encryption", NULL, 0)->value, "1"));
++    assert(!av_dict_get(options, "passphrase", NULL, 0));
++    assert(!av_dict_get(options, "pbkeylen", NULL, 0));
++    av_dict_free(&options);
++
++    char key[81];
++    memset(key, 'x', sizeof(key));
++    for (int length = 0; length <= 80; length++) {
++        key[length] = 0;
++        int ret = obe_srt_options("srt://host:9000?mode=listener", key, &options);
++        if (length < 10 || length > 79) {
++            assert(ret == AVERROR(EINVAL) && options == NULL);
++        } else {
++            assert(ret == 0);
++            assert(!strcmp(av_dict_get(options, "passphrase", NULL, 0)->value, key));
++            assert(!strcmp(av_dict_get(options, "pbkeylen", NULL, 0)->value, "32"));
++            assert(!strcmp(av_dict_get(options, "enforced_encryption", NULL, 0)->value, "1"));
++        }
++        av_dict_free(&options);
++        key[length] = 'x';
++    }
++    return 0;
++}

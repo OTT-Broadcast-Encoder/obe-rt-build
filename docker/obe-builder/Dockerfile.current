@@ -7,5 +7,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pa
 
 RUN pip3 install --no-cache-dir Cython==3.3.0 meson==1.12.1 meson-python==0.22.1
 
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    libssl-dev iperf3
+
 WORKDIR /work
 CMD ["./build.sh"]

@@ -1,6 +1,7 @@
 # Open-source source snapshot 2026-10-21; local patches listed in LIBRARIES.md
 # directory	commit	upstream
 ffmpeg	946fcce07b6dcd0331c8cc609192aeff5e1924f8	https://git.ffmpeg.org/ffmpeg.git
+srt	899348d8318eb9a3c5a5b6ec43c4a1114288773a	https://github.com/Haivision/srt.git
 x264	368ad15875cf45478ff59cfae2441b1049dbdc91	https://github.com/OTT-Broadcast-Encoder/x264.git
 x265	e444744c03978c1fb4e037168967020cf2648427	https://bitbucket.org/multicoreware/x265_git.git
 fdk-aac	a68a51aa45d86a43c7b228e3d45624af09dcdd8d	https://github.com/mstorsjo/fdk-aac.git
