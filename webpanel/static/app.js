@@ -219,6 +219,35 @@
     renderChart();
   }
 
+  function renderTelemetry() {
+    const telemetry = state?.telemetry || {};
+    const status = !connected ? "offline" : !state?.process_alive ? "idle" : telemetry.status || "unavailable";
+    const live = status === "live";
+    const labels = { live: "Misure aggiornate", waiting: "In attesa", stale: "Campione scaduto", unavailable: "Non disponibile", idle: "Encoder fermo", offline: "Servizio non connesso" };
+    const tag = byId("stream-telemetry-status");
+    tag.textContent = labels[status] || labels.unavailable;
+    tag.className = `status-tag${live ? " good" : ["stale", "offline"].includes(status) ? " warning" : ""}`;
+    const readings = {
+      "measured-video-bitrate": telemetry.video_bitrate_kbps,
+      "measured-output-bitrate": telemetry.output_bitrate_kbps,
+      "measured-video-fps": telemetry.video_fps,
+      "measured-video-frames": telemetry.video_frames,
+      "measured-video-queue": telemetry.video_queue_frames,
+      "measured-output-errors": telemetry.output_errors
+    };
+    for (const [id, value] of Object.entries(readings)) text(id, live && isFiniteNumber(value) ? numberFormat.format(value) : "—");
+    byId("measured-output-errors").classList.toggle("has-errors", live && telemetry.output_errors > 0);
+    let detail = "Le misure saranno disponibili durante la codifica.";
+    if (status === "live") {
+      const pendingRates = [telemetry.video_bitrate_kbps, telemetry.output_bitrate_kbps, telemetry.video_fps].some((value) => !isFiniteNumber(value));
+      detail = pendingRates ? "Primo campione ricevuto: attendo il successivo per calcolare bitrate e fps." : `Misure sull’ultimo intervallo${isFiniteNumber(telemetry.interval_seconds) ? ` di ${numberFormat.format(telemetry.interval_seconds)} s` : ""}.`;
+    } else if (status === "waiting") detail = "L’encoder sta preparando i primi campioni.";
+    else if (status === "stale") detail = `Nessun campione recente${isFiniteNumber(telemetry.age_seconds) ? `: l’ultimo risale a ${numberFormat.format(telemetry.age_seconds)} s fa` : ""}. Misure sospese.`;
+    else if (status === "unavailable" || !Object.hasOwn(labels, status)) detail = "La telemetria del flusso non è disponibile per questo processo.";
+    else if (status === "offline") detail = "Misure sospese fino alla riconnessione al servizio.";
+    text("stream-telemetry-detail", detail);
+  }
+
   function renderChart() {
     const count = cpuSamples.length;
     byId("chart-empty").hidden = count > 1;
@@ -331,6 +360,7 @@
     text("session-detail", next.encoding_started ? "Codifica confermata dal processo" : next.process_alive ? "Processo avviato · codifica non ancora confermata" : "Nessun processo di codifica attivo");
     renderSignal(next.config);
     renderMetrics(options.sample !== false);
+    renderTelemetry();
     renderEvents();
     text("last-update", `Aggiornato alle ${timeFormat.format(new Date())}`);
     updateControls();
@@ -357,6 +387,7 @@
     text("memory-value", "—");
     text("uptime-value", "—");
     text("uptime-hint", "Misure non disponibili");
+    renderTelemetry();
     cpuSamples = [];
     renderChart();
     text("chart-empty", "Grafico sospeso: servizio non connesso");

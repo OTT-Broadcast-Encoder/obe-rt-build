@@ -15,7 +15,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 FAKE = '''#!/usr/bin/env python3
-import os, sys, threading, time
+import json, os, sys, threading, time
 from pathlib import Path
 def events():
     previous = None
@@ -28,6 +28,7 @@ def events():
         time.sleep(0.05)
 threading.Thread(target=events, daemon=True).start()
 print('Version 4.1.4 (panel-test)', flush=True)
+frames = 0
 for line in sys.stdin:
     command = line.strip()
     if command == 'probe input':
@@ -45,6 +46,13 @@ for line in sys.stdin:
         print('URL input: receiving video and stereo audio', flush=True)
         if os.getenv('OBE_SRT_PASSPHRASE'):
             print('error detail ' + os.environ['OBE_SRT_PASSPHRASE'], flush=True)
+    elif command == 'show telemetry':
+        if Path('behavior').exists() and Path('behavior').read_text() == 'no-telemetry': continue
+        frames += 25
+        print('obecli> ....OBE_TELEMETRY ' + json.dumps({
+            'schema': 1, 'monotonic_ns': time.monotonic_ns(), 'video_frames': frames,
+            'video_bytes': frames * 40000, 'output_bytes': frames * 50000,
+            'output_datagrams': frames * 38, 'output_errors': 0, 'video_queue_frames': 2}), flush=True)
     elif command == 'quit':
         Path('quit-received').write_text('yes')
         break
@@ -238,6 +246,104 @@ class PanelTests(unittest.TestCase):
                         panel.action(action, {'revision': panel.revision})
                     self.assertEqual(raised.exception.status, 503)
             spawn.assert_not_called()
+
+    def test_live_telemetry_and_older_encoder(self):
+        self.request('POST', '/api/start', {'revision': self.state()['revision']})
+        self.wait_phase({'running'})
+        deadline = time.monotonic() + 4
+        while time.monotonic() < deadline:
+            telemetry = self.state()['telemetry']
+            if telemetry['video_fps'] is not None:
+                break
+            time.sleep(.05)
+        self.assertEqual(telemetry['status'], 'live')
+        self.assertGreater(telemetry['video_bitrate_kbps'], 0)
+        self.assertGreater(telemetry['output_bitrate_kbps'], 0)
+        self.assertEqual(telemetry['video_queue_frames'], 2)
+        self.assertFalse(any('OBE_TELEMETRY' in event['message'] for event in self.state()['events']))
+        self.request('POST', '/api/stop', {})
+        self.assertEqual(self.state()['telemetry']['status'], 'idle')
+        self.assertIsNone(self.state()['telemetry']['video_frames'])
+        (self.root/'behavior').write_text('no-telemetry')
+        self.request('POST', '/api/start', {'revision': self.state()['revision']})
+        self.wait_phase({'running'})
+        deadline = time.monotonic() + 7
+        while time.monotonic() < deadline:
+            state = self.state()
+            if state['telemetry']['status'] == 'unavailable':
+                break
+            time.sleep(.05)
+        self.assertEqual(state['telemetry']['status'], 'unavailable')
+        self.assertTrue(state['encoding_started'])
+        self.assertIsNone(state['telemetry']['output_bitrate_kbps'])
+
+
+class TelemetryTests(unittest.TestCase):
+    def setUp(self):
+        self.module = runpy.run_path(str(ROOT/'webpanel/server.py'))
+        self.temp = tempfile.TemporaryDirectory(prefix='obe-telemetry-test-')
+        self.panel = self.module['Panel'](ROOT, self.temp.name)
+        self.run = self.module['Run'](mock.Mock(), '', 'start')
+        self.run.process.poll.return_value = None
+        self.panel.run = self.run
+        self.run.started.set()
+        self.sample = {'schema': 1, 'monotonic_ns': 10_000_000_000,
+                       'video_frames': 100, 'video_bytes': 100_000, 'output_bytes': 150_000,
+                       'output_datagrams': 120, 'output_errors': 0, 'video_queue_frames': 3}
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def feed(self, **changes):
+        sample = dict(self.sample, **changes)
+        self.panel._line(self.run, 'obecli> ....OBE_TELEMETRY ' + json.dumps(sample))
+
+    def test_rates_use_encoder_clock_and_stale_values_are_hidden(self):
+        self.feed()
+        self.assertIsNone(self.panel.state()['telemetry']['video_fps'])
+        self.feed(monotonic_ns=12_000_000_000, video_frames=150, video_bytes=120_000,
+                  output_bytes=1_150_000, output_datagrams=880, video_queue_frames=1)
+        telemetry = self.panel.state()['telemetry']
+        self.assertEqual((telemetry['video_fps'], telemetry['video_bitrate_kbps'], telemetry['output_bitrate_kbps']), (25, 80, 4000))
+        self.assertEqual(telemetry['interval_seconds'], 2)
+        self.assertEqual(self.panel.state()['telemetry']['video_fps'], 25, 'HTTP reads must not alter the sample')
+        self.run.telemetry_received -= 6
+        telemetry = self.panel.state()['telemetry']
+        self.assertEqual(telemetry['status'], 'stale')
+        self.assertIsNone(telemetry['video_fps'])
+        self.assertIsNone(telemetry['video_frames'])
+
+    def test_invalid_samples_cannot_replace_good_data_or_flood_events(self):
+        self.feed()
+        for changes in ({'schema': True}, {'schema': 2}, {'video_frames': -1},
+                        {'video_frames': 2**64}, {'monotonic_ns': 1}, {'video_frames': None},
+                        {'output_errors': float('nan')}, {'monotonic_ns': 11_000_000_000, 'video_bytes': 1}):
+            self.feed(**changes)
+        self.panel._line(self.run, 'OBE_TELEMETRY {"schema":1,"schema":1}')
+        self.assertEqual(self.run.telemetry_sample, self.sample)
+        warnings = [event for event in self.panel.events if event['level'] == 'warning']
+        self.assertEqual(len(warnings), 1)
+
+    def test_unsupported_video_and_previous_process_samples(self):
+        self.feed(video_frames=None, video_bytes=None, video_queue_frames=None)
+        telemetry = self.panel.state()['telemetry']
+        self.assertEqual(telemetry['status'], 'live')
+        self.assertIsNone(telemetry['video_frames'])
+        self.assertEqual(telemetry['output_bytes'], 150_000)
+        other = self.module['Run'](mock.Mock(), '', 'start')
+        other.process.poll.return_value = None
+        self.panel.run = other
+        self.feed(monotonic_ns=12_000_000_000)
+        self.assertEqual(self.panel.state()['telemetry']['status'], 'waiting')
+        self.assertIsNone(other.telemetry_sample)
+
+    def test_srt_key_matching_schema_does_not_corrupt_machine_samples(self):
+        self.run.secret = 'video_frames'
+        self.feed()
+        self.assertEqual(self.panel.state()['telemetry']['status'], 'live')
+        self.assertEqual(self.panel.state()['telemetry']['video_frames'], 100)
+        self.panel._line(self.run, 'error detail video_frames')
+        self.assertNotIn('video_frames', json.dumps(list(self.panel.events)))
 
 
 if __name__ == '__main__':

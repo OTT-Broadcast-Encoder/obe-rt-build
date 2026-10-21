@@ -1,4 +1,4 @@
-# Webpanel 0.1 — contratto
+# Webpanel 0.2 — contratto
 
 Console italiana, scura, per un processo OBE gestito dal pannello. Python stdlib
 e HTML/CSS/JS, font IBM Plex locali. Nessuna dipendenza nuova. Il servizio resta
@@ -68,7 +68,7 @@ facoltativa 10–79 byte, solo per l'azione e solo via ambiente OBE.
   "encrypted": false,
   "metrics": {"cpu_percent": null, "memory_mb": null, "uptime_seconds": 0},
   "events": [{"id": 1, "time": "2026-10-21T20:00:00Z", "level": "info", "message": "Pannello pronto"}],
-  "version": {"panel": "0.1.0", "encoder": null}
+  "version": {"panel": "0.2.0", "encoder": null}
 }
 ```
 
@@ -83,3 +83,35 @@ Le modifiche non salvate restano nel form e non sono sovrascritte dal polling.
 Prima di probe/start richiedere salvataggio della bozza; passphrase mai in storage,
 URL, log o export e cancellata dal form dopo l'azione. Errori e disconnessione API
 devono essere visibili; nessun avvio al caricamento o riavvio automatico del server.
+
+## Telemetria del flusso
+
+`GET /api/state` aggiunge `telemetry`, indipendente dalle metriche CPU/RSS.
+È una modifica additiva: configurazione e richieste esistenti restano valide.
+
+- `status`: `idle` senza processo, `waiting` prima dei campioni, `live` con un
+  campione recente, `stale` dopo 5 secondi, `unavailable` senza risposta CLI.
+- `age_seconds`: età locale dell'ultimo campione valido; `interval_seconds`:
+  intervallo monotono del motore usato per calcolare i rate.
+- `video_frames`, `video_bytes`: frame interi e byte AVC prodotti da x264.
+- `output_bytes`, `output_datagrams`, `output_errors`: payload UDP accettato dal
+  socket, datagrammi inviati ed errori locali di invio, cumulativi nel processo.
+- `video_queue_frames`: frame ancora nella coda degli encoder AVC.
+- `video_fps`, `video_bitrate_kbps`, `output_bitrate_kbps`: differenze dei
+  contatori divise per l'intervallo; kb/s decimali. Il primo campione non ha rate.
+
+Le letture assenti, non supportate, scadute o di un processo terminato sono
+`null`, mai ricavate dal bitrate configurato. Il contatore frame misura 25 frame/s
+su 1080i50, non i 50 semiquadri/s. L'uscita UDP misura payload MPEG-TS nel pannello:
+nessuna misura di overhead IP, perdita remota, latenza o conferma di ricezione.
+
+Il backend invia `show telemetry` su stdin ogni secondo, con una sola richiesta
+in corso. Dopo 5 secondi senza risposta sospende il campionamento per quel
+processo e segnala l'indisponibilità senza arrestare la codifica. Una build
+precedente continua quindi a funzionare con la sola telemetria CPU/RSS.
+Il core risponde con `OBE_TELEMETRY {JSON}` schema 1 e clock `monotonic_ns`;
+i contatori sono atomici e azzerati prima dell'avvio dei thread OBE.
+Schema, tipi, clock e monotonia dei contatori sono validati; campioni malformati
+non sostituiscono quelli validi. Le righe di misura non riempiono il registro
+eventi e non creano file di statistiche. I processi precedenti non possono
+aggiornare la telemetria del successivo.

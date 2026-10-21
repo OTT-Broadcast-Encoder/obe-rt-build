@@ -19,7 +19,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qsl, quote, quote_plus, unquote, urlsplit
 
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
+TELEMETRY_COUNTERS = ("video_frames", "video_bytes", "output_bytes", "output_datagrams", "output_errors")
+TELEMETRY_FIELDS = {"schema", "monotonic_ns", *TELEMETRY_COUNTERS, "video_queue_frames"}
+TELEMETRY_MAX_AGE = 5
 DEFAULT_CONFIG = {
     "name": "Banco 1080i", "input_url": "udp://127.0.0.1:12000",
     "output_url": "udp://127.0.0.1:13000", "video_bitrate_kbps": 8000,
@@ -163,6 +166,12 @@ class Run:
         self.start_time = time.monotonic()
         self.cpu_sample = None
         self.collector = None
+        self.telemetry_response = threading.Event()
+        self.telemetry_sample = None
+        self.telemetry_received = None
+        self.telemetry_rates = {}
+        self.telemetry_failed = False
+        self.telemetry_warned = False
 
 
 class Panel:
@@ -226,8 +235,76 @@ class Panel:
                     "encoding_started": self.encoding_started and alive,
                     "pid": run.process.pid if alive else None, "signal_state": self.signal_state,
                     "signal": dict(self.signal) if self.signal else None, "encrypted": self.encrypted and alive,
-                    "metrics": metrics, "events": list(self.events),
+                    "metrics": metrics, "telemetry": self._telemetry_state(run, alive), "events": list(self.events),
                     "version": {"panel": VERSION, "encoder": self.encoder_version}}
+
+    def _telemetry_state(self, run, alive):
+        result = {key: None for key in (*TELEMETRY_COUNTERS, "video_queue_frames",
+                  "video_bitrate_kbps", "output_bitrate_kbps", "video_fps", "interval_seconds", "age_seconds")}
+        result["status"] = "idle"
+        if not alive:
+            return result
+        result["status"] = "unavailable" if run.telemetry_failed else "waiting"
+        if run.telemetry_sample is None:
+            return result
+        age = max(0, time.monotonic() - run.telemetry_received)
+        result["age_seconds"] = round(age, 2)
+        result["status"] = "stale" if age > TELEMETRY_MAX_AGE else "live"
+        if result["status"] == "live":
+            result.update({key: run.telemetry_sample[key] for key in (*TELEMETRY_COUNTERS, "video_queue_frames")})
+            result.update(run.telemetry_rates)
+        return result
+
+    def _telemetry_line(self, run, payload):
+        run.telemetry_response.set()
+        try:
+            sample = json.loads(payload, object_pairs_hook=reject_duplicates)
+            if not isinstance(sample, dict) or set(sample) != TELEMETRY_FIELDS or type(sample["schema"]) is not int or sample["schema"] != 1:
+                raise ValueError()
+            video_keys = ("video_frames", "video_bytes", "video_queue_frames")
+            video_missing = all(sample[key] is None for key in video_keys)
+            for key in TELEMETRY_FIELDS - {"schema"}:
+                if video_missing and key in video_keys:
+                    continue
+                if type(sample[key]) is not int or not 0 <= sample[key] < 2**64:
+                    raise ValueError()
+            previous = run.telemetry_sample
+            rates = {}
+            if previous:
+                elapsed = (sample["monotonic_ns"] - previous["monotonic_ns"]) / 1e9
+                if elapsed <= 0:
+                    raise ValueError()
+                for key in TELEMETRY_COUNTERS:
+                    if previous[key] is not None and sample[key] is not None and sample[key] < previous[key]:
+                        raise ValueError()
+                rates["interval_seconds"] = round(elapsed, 3)
+                for counter, metric, factor in (("video_bytes", "video_bitrate_kbps", .008),
+                                                ("output_bytes", "output_bitrate_kbps", .008),
+                                                ("video_frames", "video_fps", 1)):
+                    if sample[counter] is not None and previous[counter] is not None:
+                        rates[metric] = round((sample[counter] - previous[counter]) * factor / elapsed, 2)
+            run.telemetry_sample, run.telemetry_rates = sample, rates
+            run.telemetry_received, run.telemetry_failed = time.monotonic(), False
+        except (ValueError, TypeError, KeyError, RecursionError):
+            run.telemetry_failed = True
+            if not run.telemetry_warned:
+                self._event("warning", "Campione di telemetria non valido; le misure precedenti scadono dopo 5 secondi.")
+                run.telemetry_warned = True
+
+    def _monitor_telemetry(self, run):
+        # One request at a time: a stalled or older CLI cannot fill the stdin pipe.
+        while not run.cancel.is_set() and not run.exited.is_set():
+            run.telemetry_response.clear()
+            if not self._send(run, "show telemetry\n"):
+                return
+            if not self._await(run, run.telemetry_response, TELEMETRY_MAX_AGE):
+                with self.lock:
+                    if run is self.run and not run.cancel.is_set() and not run.exited.is_set():
+                        run.telemetry_failed = True
+                        self._event("warning", "Telemetria del flusso non disponibile: OBE non ha risposto. La codifica continua.")
+                return
+            if run.cancel.wait(1):
+                return
 
     def save_config(self, payload):
         if not isinstance(payload, dict) or set(payload) != {"revision", "config"}:
@@ -344,15 +421,25 @@ class Panel:
             if not self._send(run, commands) or not self._await(run, run.started, 20):
                 if not run.cancel.is_set():
                     self._fail(run, "OBE non ha confermato l'avvio della codifica. Controlla gli eventi.")
+                return
         except Exception:
             self._fail(run, "L'operazione OBE non è stata completata.")
+            return
+        self._monitor_telemetry(run)
 
     def _line(self, run, raw):
-        line = clean_log(raw, run.secret)
-        if not line:
-            return
+        # Machine samples contain only validated numbers/null, and are never logged.
+        # Redacting a passphrase that equals a JSON key would corrupt the schema.
+        telemetry = re.search(r"(?:^|obecli>\s*|\.{2,})OBE_TELEMETRY (.*)$", ANSI.sub("", raw))
         with self.lock:
             if run is not self.run:
+                return
+            if telemetry:
+                if run.started.is_set() and not run.cancel.is_set():
+                    self._telemetry_line(run, telemetry[1])
+                return
+            line = clean_log(raw, run.secret)
+            if not line:
                 return
             self._event("warning" if re.search(r"error|failed|warning|invalid|retrying|connection lost", line, re.I) else "info", line)
             if line.startswith("Version "):

@@ -51,6 +51,20 @@
             <p class="signal-note">Formato e cadenza ereditati dalla sorgente. Lo stato dell’encoder non conferma la ricezione a destinazione.</p>
           </section>
 
+          <section class="stream-telemetry" aria-labelledby="stream-telemetry-heading" aria-describedby="stream-telemetry-detail stream-telemetry-note">
+            <div class="section-heading"><h2 id="stream-telemetry-heading">Telemetria del flusso</h2><span class="status-tag" id="stream-telemetry-status" role="status">In attesa</span></div>
+            <dl class="stream-readings">
+              <div><dt>Bitrate AVC</dt><dd><span id="measured-video-bitrate">—</span> <span class="reading-unit">kb/s</span></dd></div>
+              <div><dt>Bitrate UDP</dt><dd><span id="measured-output-bitrate">—</span> <span class="reading-unit">kb/s</span></dd></div>
+              <div><dt>Cadenza codificata</dt><dd><span id="measured-video-fps">—</span> <span class="reading-unit">fps</span></dd></div>
+              <div><dt>Frame codificati</dt><dd id="measured-video-frames">—</dd></div>
+              <div><dt>Coda video</dt><dd><span id="measured-video-queue">—</span> <span class="reading-unit">frame</span></dd></div>
+              <div><dt>Errori invio UDP</dt><dd id="measured-output-errors">—</dd></div>
+            </dl>
+            <p id="stream-telemetry-detail">Le misure saranno disponibili durante la codifica.</p>
+            <p id="stream-telemetry-note">La cadenza conta frame interi: 1080i50 corrisponde a 25 fps. Il bitrate UDP misura il payload MPEG-TS inviato, senza confermare la ricezione a destinazione. Frame ed errori sono totali dall’avvio.</p>
+          </section>
+
           <div class="telemetry-layout">
             <section class="telemetry-panel" aria-labelledby="telemetry-heading"><div class="section-heading"><h2 id="telemetry-heading">Telemetria processo</h2><span class="sampling-label"><span class="status-dot neutral" id="sampling-dot"></span>Campioni ogni 2 s</span></div><div class="metrics"><div class="metric"><span class="metric-label">CPU encoder</span><div class="metric-value"><span id="cpu-value">—</span><span class="metric-unit">%</span></div><span class="metric-hint">100% = un core</span></div><div class="metric"><span class="metric-label">Memoria RSS</span><div class="metric-value"><span id="memory-value">—</span><span class="metric-unit">MB</span></div><span class="metric-hint">Memoria del processo</span></div><div class="metric"><span class="metric-label">Tempo di attività</span><div class="metric-value uptime-value" id="uptime-value">—</div><span class="metric-hint" id="uptime-hint">Dall’avvio del processo</span></div></div><div class="chart-container"><svg id="cpu-chart" viewBox="0 0 600 92" preserveAspectRatio="none" role="img" aria-labelledby="chart-title"><title id="chart-title">CPU encoder: nessun campione disponibile</title><path class="chart-grid" d="M0 12H600M0 46H600M0 80H600"/><path id="cpu-area" class="chart-area"/><path id="cpu-line" class="chart-line"/></svg><p class="chart-empty" id="chart-empty">Il grafico si popola con il processo attivo</p></div><div class="chart-caption"><span id="chart-range">CPU · nessun campione</span><span id="chart-scale">Solo misure reali</span></div></section>
             <section class="recent-events-panel" aria-labelledby="recent-events-heading"><div class="section-heading"><h2 id="recent-events-heading">Ultime attività</h2><a href="#events" class="text-link">Tutte <span aria-hidden="true">↗</span></a></div><ol class="event-list recent-events" id="recent-events"><li class="empty-events">Le attività compariranno qui.</li></ol></section>
