@@ -125,3 +125,13 @@ Provare il profilo scelto sul server obiettivo e sui ricevitori esistenti, in un
 ### Checkpoint M4
 - [ ] Profilo HD collaudato e limiti residui registrati; preset PAL e procedura di ripristino disponibili.
 - [ ] Rivalutare il backlog di API/dashboard, altri protocolli, ridondanza e GPU solo dopo questo risultato. Il piano guida lo sviluppo; il rilascio operativo richiede il collaudo concordato.
+
+## T12 — Webpanel locale per il banco di encoding
+
+Primo incremento richiesto dall'utente: **completato**. [Guida e limiti](../docs/webpanel.md).
+- [x] Console scura responsive: panoramica, configurazione, profili ed eventi.
+- [x] Configurazione persistente e validata; probe/start/stop del solo processo gestito.
+- [x] Stato di ricezione/riconnessione, CPU/RSS reali, chiave SRT effimera e log limitati.
+- [x] Dieci test API, pipeline reale PAL AVC/MP2 con riconnessione e collaudo Chromium desktop/mobile.
+- [ ] Account/ruoli, preview, livelli audio, statistiche SRT, più encoder e collaudo prolungato.
+- File: `webpanel/`, `tests/webpanel.py`, `tests/webpanel-live.py`, `docs/webpanel.md`.

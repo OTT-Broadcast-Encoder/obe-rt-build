@@ -65,6 +65,12 @@ Restano da scegliere con le misure: bitrate massimo video/TS HD accettabile, lat
 
 ## Ambito e lavoro successivo
 
+Su richiesta successiva è disponibile un primo [webpanel locale](../docs/webpanel.md):
+profili persistenti, probe, avvio/arresto, stato di ricezione, CPU/RSS ed eventi
+di un encoder. API, ciclo di vita reale e browser collaudati; accesso remoto tramite
+tunnel SSH. Preview, statistiche di rete, account e gestione multicanale restano
+nel backlog e non sostituiscono il benchmark qualità/compressione.
+
 - **obe-rt:** modulo `lavf_input`, integrazione probe/avvio, timestamp audio/video, metadati, conversioni e statistiche necessarie alle misure.
 - **obe-rt-build:** dipendenza SRT fissata e collegamento FFmpeg, immagini di analisi, corpus/manifest, benchmark, risultati e preset riproducibili.
 - **x264:** tuning e correzioni motivate dal profilo del carico o da difetti riprodotti; preservare le estensioni OBE e provare ogni variazione sul corpus.

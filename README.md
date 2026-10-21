@@ -19,6 +19,12 @@ The [1080i validation](docs/1080i-validation.md) checks decoded TFF/BFF fields,
 chroma and A/V sync. The [contribution report](docs/contribution-link.md)
 records the real SSH/TCP measurements and the remaining UDP reachability issue.
 
+The [web panel](docs/webpanel.md) provides a local Italian control console:
+saved profiles, input probe, start/stop, process metrics and encoder events.
+Run `./webpanel/run.sh` after the isolated build, then open
+`http://127.0.0.1:18088`. Remote access uses an SSH tunnel; the panel manages
+one encoder and does not automatically start it or change router settings.
+
 ## Isolated Ubuntu build
 
 From the repository root, build the toolchain image and run the build inside it:
