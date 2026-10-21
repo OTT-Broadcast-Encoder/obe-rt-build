@@ -26,3 +26,4 @@ zimg/
 vapoursynth/
 vs-plugins/vapoursynth-*
 vaapi/libdrm-*.tar.xz
+tests/.build/
