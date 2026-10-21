@@ -75,7 +75,7 @@ frame codificati, coda video ed errori locali di invio. Questi valori provengono
 da contatori del motore OBE e sono distinti dai bitrate configurati. Su 1080i50,
 25 frame/s corrispondono ai 50 semiquadri/s. Il bitrate UDP riguarda il payload
 MPEG-TS accettato dal socket locale: non certifica la ricezione a destinazione.
-Non sono esposti anteprima video, livelli audio o statistiche SRT non disponibili.
+La preview è opzionale; livelli audio e statistiche SRT non disponibili restano esclusi.
 
 Il campionamento avviene una volta al secondo e il browser si aggiorna ogni due.
 I rate richiedono due campioni; i valori mancanti restano vuoti. Dopo cinque
@@ -141,7 +141,7 @@ accessibilità 100/100, best practices 100/100; non è una certificazione comple
 di accessibilità. Nessuna richiesta a servizi esterni; console pulita dopo il
 ricaricamento con il servizio disponibile.
 
-Restano fuori da questa versione preview video, livelli audio, statistiche SRT,
+Restano fuori da questa versione livelli audio, statistiche SRT,
 account/ruoli e il collaudo prolungato. Contratto API:
 [webpanel/CONTRACT.md](../webpanel/CONTRACT.md).
 
@@ -159,3 +159,23 @@ Dimensionare CPU e memoria con il carico reale prima dell'uso prolungato.
 verifica due encoder reali contemporanei PAL/1080i, stop indipendente e decodifica.
 Usare esclusivamente un servizio di collaudo fermo: il test salva e ripristina
 i profili e crea il secondo canale se manca.
+
+### Preview dell'uscita
+
+**Attiva preview** avvia FFmpeg solo per il canale selezionato. Riceve l'uscita
+UDP già configurata, deinterlaccia e produce JPEG larghi 640 px, senza audio,
+al massimo un'immagine/s; il browser aggiorna ogni 2 s. Non cambia il bitrate o
+le uscite OBE. Sono ammessi loopback e multicast IP; per unicast remoto serve
+un monitor a destinazione. La porta unicast locale deve essere libera: la
+preview non abilita il riuso del socket, per non sottrarre pacchetti a un ricevitore.
+
+Memoria limitata all'ultimo JPEG (massimo 1 MiB), nessuna registrazione su disco.
+Immagini più vecchie di 3 s, sorgente in riconnessione, crash o stop non appaiono
+come live. Uno stop della preview lascia attivo l'encoder; stop/crash dell'encoder
+e shutdown fermano anche FFmpeg. Il processo preview consuma CPU aggiuntiva,
+non inclusa nella metrica **CPU encoder**. Un errore richiede riattivazione manuale.
+Non sostituisce controllo dei campi, ascolto audio o analisi qualità.
+
+Test: `tests/webpanel-preview-unit.py`, lifecycle API in `tests/webpanel.py` e
+`docker exec obe-webpanel-next python3 tests/webpanel-preview-live.py`.
+Quest'ultimo usa solo HD sintetico e porte locali; ripristina il profilo iniziale.

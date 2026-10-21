@@ -17,6 +17,7 @@ import time
 import unicodedata
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qsl, quote, quote_plus, unquote, urlsplit
+from preview import Preview
 
 
 VERSION = "0.3.0"
@@ -179,6 +180,7 @@ class Panel:
         self.root, self.state_dir = Path(root).resolve(), Path(state_dir).resolve()
         self.lock = threading.RLock()
         self.run = None
+        self.preview = Preview(self.root)
         self.closing = False
         self.config, self.revision = dict(DEFAULT_CONFIG), 1
         self.phase, self.message = "idle", "Encoder fermo"
@@ -230,13 +232,36 @@ class Panel:
                     run.cpu_sample = (now, cpu)
                 except (OSError, ValueError, IndexError):
                     pass
+            preview = self.preview.state()
+            if self.phase != "running" and preview["status"] == "live":
+                preview.update(status="stale", frame_id=None)
             return {"phase": self.phase, "message": self.message, "revision": self.revision,
                     "config": dict(self.config), "profiles": PROFILES, "process_alive": alive,
                     "encoding_started": self.encoding_started and alive,
                     "pid": run.process.pid if alive else None, "signal_state": self.signal_state,
                     "signal": dict(self.signal) if self.signal else None, "encrypted": self.encrypted and alive,
                     "metrics": metrics, "telemetry": self._telemetry_state(run, alive), "events": list(self.events),
-                    "version": {"panel": VERSION, "encoder": self.encoder_version}}
+                    "version": {"panel": VERSION, "encoder": self.encoder_version},
+                    "preview": preview}
+
+    def start_preview(self):
+        with self.lock:
+            if self.closing or self.phase != "running" or not self.run or self.run.process.poll() is not None:
+                raise APIError(409, "encoder_not_running", "Avvia la codifica prima della preview.")
+            try:
+                self.preview.start(self.config["output_url"])
+            except ValueError as error:
+                raise APIError(422, "preview_unsupported", str(error)) from None
+            except OSError:
+                raise APIError(503, "preview_unavailable", "FFmpeg non è disponibile nella build del pannello.") from None
+            return self.state()
+
+    def preview_frame(self):
+        with self.lock:
+            frame = self.preview.jpeg() if self.phase == "running" and self.run and self.run.process.poll() is None else None
+            if frame is None:
+                raise APIError(503, "preview_not_ready", "Nessuna immagine aggiornata disponibile.")
+            return frame
 
     def _telemetry_state(self, run, alive):
         result = {key: None for key in (*TELEMETRY_COUNTERS, "video_queue_frames",
@@ -506,6 +531,7 @@ class Panel:
             with self.lock:
                 run.secret = ""
                 if run is self.run:
+                    self.preview.stop()
                     self.encoding_started, self.encrypted = False, False
                     if not run.expected_exit:
                         self.phase, self.message = "error", "Il processo OBE è terminato. Controlla gli eventi prima di riavviare."
@@ -555,6 +581,7 @@ class Panel:
 
     def stop(self):
         with self.lock:
+            self.preview.stop()
             run = self.run
             if run is None or run.exited.is_set():
                 self.phase, self.message = "idle", "Encoder fermo"
@@ -761,6 +788,16 @@ class Handler(BaseHTTPRequestHandler):
             panel = channels.get(channel)
             if self.command == "GET" and path == "/api/state":
                 self._reply(200, panel.state())
+            elif self.command == "GET" and path == "/api/preview-frame":
+                self._reply(200, panel.preview_frame(), "image/jpeg")
+            elif self.command == "POST" and path in {"/api/preview", "/api/preview-stop"}:
+                if self._body():
+                    raise APIError(422, "invalid_request", "La preview richiede un oggetto JSON vuoto.")
+                if path == "/api/preview":
+                    self._reply(200, panel.start_preview())
+                else:
+                    panel.preview.stop()
+                    self._reply(200, panel.state())
             elif self.command == "GET" and path in ASSETS:
                 filename, mime = ASSETS[path]
                 try:

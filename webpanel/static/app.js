@@ -118,6 +118,8 @@
     const ready = connected && !pending && stopped && !dirty && !conflict();
     byId("channel-select").disabled = Boolean(pending);
     byId("new-channel").disabled = !connected || Boolean(pending) || dirty || byId("channel-select").options.length >= 4;
+    byId("preview-toggle").disabled = !connected || Boolean(pending) || (!state?.preview?.pid && state?.phase !== "running");
+    byId("preview-toggle").textContent = state?.preview?.pid ? "Spegni preview" : "Attiva preview";
     document.querySelectorAll('[data-action="start"]').forEach((button) => {
       button.disabled = !ready;
       if (button.closest(".session-actions")) button.hidden = Boolean(active);
@@ -365,6 +367,7 @@
     renderSignal(next.config);
     renderMetrics(options.sample !== false);
     renderTelemetry();
+    renderPreview();
     renderEvents();
     text("last-update", `Aggiornato alle ${timeFormat.format(new Date())}`);
     updateControls();
@@ -373,6 +376,7 @@
 
   function markDisconnected(error) {
     connected = false;
+    renderPreview();
     const banner = byId("api-error");
     banner.textContent = `Connessione al servizio interrotta. ${error.message} Nuovo tentativo automatico tra 2 secondi.`;
     banner.hidden = false;
@@ -465,6 +469,7 @@
     mutationEpoch += 1;
     pending = "channel";
     state = null; baseConfig = null; draftRevision = null; cpuSamples = []; chartPid = null;
+    renderPreview();
     byId("srt-passphrase").value = "";
     setNotice(""); updateControls();
     const url = new URL(location.href);
@@ -499,7 +504,7 @@
     try {
       const next = await api(action, action === "config" ? "PUT" : "POST", payload);
       applyState(next, { saved: action === "config", sample: false });
-      const confirmations = { config: "Configurazione salvata. Ora puoi verificare l’ingresso o avviare l’encoder.", probe: "Verifica dell’ingresso avviata. L’esito comparirà nello stato e nel registro eventi.", start: "Richiesta di avvio accettata. Attendi la conferma del processo.", stop: next.process_alive ? "Richiesta di arresto accettata." : "Encoder arrestato." };
+      const confirmations = { config: "Configurazione salvata. Ora puoi verificare l’ingresso o avviare l’encoder.", probe: "Verifica dell’ingresso avviata. L’esito comparirà nello stato e nel registro eventi.", start: "Richiesta di avvio accettata. Attendi la conferma del processo.", stop: next.process_alive ? "Richiesta di arresto accettata." : "Encoder arrestato.", preview: "Preview avviata: in attesa del primo fotogramma.", "preview-stop": "Preview spenta." };
       setNotice(confirmations[action]);
     } catch (error) {
       setNotice(error.message, "error");
@@ -577,6 +582,29 @@
     if (activeProcess()) void runAction("stop", {});
   });
   byId("event-filter").addEventListener("change", () => renderEvents(true));
+  let previewImageUrl = null;
+  function renderPreview() {
+    const slot = byId("preview-image");
+    const preview = connected ? state?.preview : null;
+    const status = preview?.status || "idle";
+    const labels = { idle: "Preview spenta", waiting: "In attesa dell’immagine…", stale: "Immagine non aggiornata", live: "Preview aggiornata", error: "Preview interrotta: verifica l’uscita e che la porta locale sia libera, poi riattivala." };
+    text("preview-status", connected ? labels[status] || labels.idle : "Preview non disponibile: servizio non connesso");
+    if (status === "live") {
+      const source = `/api/channels/${encodeURIComponent(selectedChannel)}/preview-frame?frame=${preview.frame_id}`;
+      if (previewImageUrl !== source) {
+        previewImageUrl = source;
+        const image = new Image();
+        image.alt = "Anteprima dell’uscita del canale selezionato";
+        image.onload = () => { if (previewImageUrl === source && connected) slot.replaceChildren(image); };
+        image.onerror = () => {
+          if (previewImageUrl !== source) return;
+          slot.replaceChildren(); text("preview-status", "Nessuna immagine aggiornata disponibile");
+        };
+        image.src = source;
+      }
+    } else { previewImageUrl = null; slot.replaceChildren(); }
+  }
+  byId("preview-toggle").addEventListener("click", () => void runAction(state?.preview?.pid ? "preview-stop" : "preview", {}));
   window.addEventListener("hashchange", setView);
   window.addEventListener("beforeunload", (event) => {
     byId("srt-passphrase").value = "";

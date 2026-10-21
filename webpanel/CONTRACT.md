@@ -132,3 +132,15 @@ indipendenti. `main` conserva stato e rotte esistenti; nessun autoavvio.
   canali non certifica la capacità CPU della macchina.
 - La selezione UI non arresta la codifica; una bozza va salvata o ripristinata
   prima del cambio. Un collegamento a un canale assente torna a `main`.
+
+## Preview per canale
+
+- `POST /api/channels/{id}/preview`, corpo `{}`: attiva la preview dell'uscita;
+  richiede codifica avviata (409), destinazione locale/multicast (422), FFmpeg (503).
+- `POST /api/channels/{id}/preview-stop`, `{}`: ferma solo la preview.
+- `GET /api/channels/{id}/preview-frame`: JPEG non memorizzabile in cache;
+  503 se assente/scaduto o il canale non è in codifica. Nessun URL fornito dal client.
+- Stato aggiuntivo `preview: {status, age_seconds, frame_id, pid}`; status
+  `idle|waiting|live|stale|error`. Età massima 3 s, JPEG massimo 1 MiB.
+- Stessi endpoint senza `/channels/{id}` come alias di `main`.
+- Avvio esplicito, nessun autoavvio e nessuna modifica alle uscite OBE.

@@ -14,6 +14,7 @@ import unittest
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT/'webpanel'))
 FAKE = '''#!/usr/bin/env python3
 import json, os, sys, threading, time
 from pathlib import Path
@@ -300,6 +301,30 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(self.request('GET', prefix+'/state')[1]['config']['name'], 'Secondo canale')
         self.assertFalse(self.state()['process_alive'])
         self.assertFalse(self.request('GET', prefix+'/state')[1]['process_alive'])
+
+    def test_preview_lifecycle_and_stale_image(self):
+        self.assertEqual(self.request('POST', '/api/preview', {})[0], 409)
+        self.assertEqual(self.request('GET', '/api/preview-frame')[0], 503)
+        self.assertEqual(self.request('POST', '/api/preview', {'url': 'file:///tmp/x'})[0], 422)
+        executable = self.root/'target-root/usr/local/bin/ffmpeg'
+        executable.parent.mkdir(parents=True)
+        executable.write_text("#!/usr/bin/env python3\nimport os,time\nos.write(1,b'\\xff\\xd8test\\xff\\xd9')\ntime.sleep(30)\n")
+        executable.chmod(0o700)
+        self.request('POST', '/api/start', {'revision': self.state()['revision']})
+        self.wait_phase({'running'})
+        self.assertEqual(self.request('POST', '/api/preview', {})[0], 200)
+        deadline = time.monotonic()+3
+        while self.state()['preview']['status'] != 'live' and time.monotonic() < deadline: time.sleep(.05)
+        preview = self.state()['preview']
+        self.assertEqual(preview['status'], 'live')
+        status, frame = self.request('GET', '/api/preview-frame')
+        self.assertEqual((status, frame), (200, b'\xff\xd8test\xff\xd9'))
+        time.sleep(3.1)
+        self.assertEqual(self.state()['preview']['status'], 'stale')
+        self.assertEqual(self.request('GET', '/api/preview-frame')[0], 503)
+        self.request('POST', '/api/stop', {})
+        self.assertEqual(self.state()['preview']['status'], 'idle')
+        with self.assertRaises(ProcessLookupError): os.kill(preview['pid'], 0)
 
     def test_conflicts_limits_and_invalid_ids(self):
         status, created = self.request('POST', '/api/channels', {'name': 'Duplicato'})
