@@ -17,8 +17,8 @@ the exact checked-out commits; local compatibility patches are listed below.
 | zimg | release-3.0.6 |
 | VapourSynth | R81 |
 | libklvanc | vid.obe.1.12.0 |
-| libklscte35 | vid.obe.1.4.0 |
-| libltntstools | v1.38.6 |
+| libklscte35 | `9df34b200b71485fcd757f9da6b3aeb492e559b6` (2026-09-01) |
+| libltntstools | `f6399630de4d29496c94256f1fec727efa10d1df` (2026-10-02) + segmentwriter patch |
 | libmpegts-obe | `1ee8519e79280f9cfbcf65af90cc9dc26345527a`, HEVC development branch |
 | libdrm | 2.4.134 |
 | libva / libva-utils | 2.24.1 / 2.24.0 |
@@ -52,6 +52,8 @@ header subprojects in its upstream wrap files.
   for a literal single-file target. OBE uses it to preserve configured output
   filenames; segmented `.ts` recordings retain their timestamped names. It also
   returns the queued byte count from writes, as required by the API and OBE.
+  The patch is rebased on the October upstream snapshot and captures byte
+  counts before enqueueing in both write APIs, preventing a race with cleanup.
 - `0011-obe-network-input.patch` enables decoded network URL input, preserves
   video signalling, and handles bounded network reads and queue growth. It
   also fixes the MPEG-TS statistics lifecycle for current libltntstools and
@@ -60,6 +62,10 @@ header subprojects in its upstream wrap files.
   cancellable delays of 1, 2, 4 and then 5 seconds. Reopened sessions keep the
   configured streams and resume the media timeline after sender timestamp
   resets; unsupported format changes still require a new probe.
+- `0013-obe-ltn-safety-fixes.patch` backports selected LTN fixes for filter
+  shutdown, long-running teletext timestamps, DeckLink VANC bounds and error
+  cleanup, and audio/metadata allocation failures. It also fixes the metadata
+  structure allocation size, with an AddressSanitizer regression test.
 - The old ZVBI/libyuv/x265/FFmpeg patches remain as historical files but are
   not applied to this snapshot. x265 4.2 already contains the SEI allocation
   fixes; current FFmpeg includes the Binutils fix. PNG dependencies are
@@ -71,8 +77,9 @@ should remain available until those checks have been run on the target hardware.
 
 ## Validation
 
-The complete `./build.sh` and `./tests/smoke-current.sh` both passed in the
-isolated Ubuntu 24.04 image on 2026-10-21. The final smoke test used a fresh
+The pre-LTN snapshot (`f2fbadc`) passed the complete `./build.sh` and
+`./tests/smoke-current.sh` in the isolated Ubuntu 24.04 image on 2026-10-21.
+The final smoke test used a fresh
 container and covered AAC-LC (mono/stereo/5.1), HE-AAC v1/v2, AC-3, E-AC-3,
 MP2, PES timestamp increments, decoded signal levels, FIFO wrap/growth/reset,
 NV12 strides and guards, x264 speed control, MPEG-2/H.264/HEVC software encoding,
@@ -85,3 +92,13 @@ three sender restarts with reset timestamps, loss of only audio or video, and
 shutdown during silence/backoff. UDP PAL input also passed its regression check.
 Patches `0008`, `0011` and `0012` reproduce the tested URL reader on the pinned
 OBE revision; Internet transport and sustained operation still need validation.
+
+The LTN integration rebuilt and installed libklscte35 (209 API tests passed),
+libltntstools and OBE, reusing the other unchanged libraries. The current smoke
+suite passed, including metadata allocation checks with ASan/UBSan and both
+writer APIs with ASan. The writer test disables leak detection for preexisting
+upstream lifecycle leaks; it verifies the enqueue ownership race independently.
+UDP PAL/1080i50 input, three sender restarts, single-track loss of audio/video
+and bounded shutdown passed on the new binary. The complete encoder and writer
+source trees match their pinned bases plus the build patches. See the
+[LTN audit](docs/upstream-ltn-2026-10-21.md) for scope and remaining limitations.

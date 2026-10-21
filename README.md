@@ -7,6 +7,9 @@ The [feature roadmap](tasks/plan.md) and [implementation backlog](tasks/todo.md)
 prioritize encoding quality, the PAL-to-1080i transition, and URL-based network
 input for testing without SDI (in Italian).
 
+The [LTN upstream audit](docs/upstream-ltn-2026-10-21.md) records the library
+rebase, selected encoder fixes, validation and deferred upstream changes.
+
 The [URL input guide](docs/input-url.md) describes the first UDP/RTP MPEG-TS
 input implementation, a live synthetic source, CLI configuration and its
 integration tests. SRT and the Internet contribution link remain follow-up work.
