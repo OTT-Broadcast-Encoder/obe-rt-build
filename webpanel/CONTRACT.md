@@ -1,4 +1,4 @@
-# Webpanel 0.2 — contratto
+# Webpanel 0.3 — contratto
 
 Console italiana, scura, per un processo OBE gestito dal pannello. Python stdlib
 e HTML/CSS/JS, font IBM Plex locali. Nessuna dipendenza nuova. Il servizio resta
@@ -11,8 +11,9 @@ locale, accessibile da remoto mediante tunnel SSH; nessun intervento sui router.
   solo a encoder fermo. Revision discordante: 409. Nessuna passphrase persistita.
 - `POST /api/probe`: `{revision, passphrase?: string}`; verifica asincrona del
   profilo salvato usando OBE; torna 202. Non avvia l'encoding.
-- `POST /api/start`: stesso corpo; probe e avvio asincrono, 202. Configurazione
-  applicata solo al processo figlio posseduto dal pannello.
+- `POST /api/start`: `{revision, passphrase?: string, auto_restart?: boolean}`;
+  probe e avvio asincrono, 202. Recupero disabilitato se il campo è omesso.
+  Configurazione applicata solo al processo figlio posseduto dal pannello.
 - `POST /api/stop`: `{}`; arresto del solo processo gestito, idempotente.
 - Errori: `{error: {code, message, fields?: object}}`, con 400/403/409/422/500/503.
   Durante lo spegnimento, probe/start già accettati sono rifiutati con 503.
@@ -49,7 +50,8 @@ lookahead 0–100; thread 1–32; audio 64/96/128/160/192/224/256/320/384 kb/s.
 Preset x264 ultrafast/superfast/veryfast/faster/fast/medium/slow/slower/veryslow.
 URL solo protocolli di rete accettati da OBE, output solo UDP. Rifiutati
 credenziali, separatori CLI, controlli e query crypto/credenziali. Chiave SRT
-facoltativa 10–79 byte, solo per l'azione e solo via ambiente OBE.
+facoltativa 10–79 byte, conservata in memoria durante la sessione e passata
+ai processi OBE soltanto via ambiente, compresi i riavvii della stessa sessione.
 
 ## Stato
 
@@ -68,11 +70,11 @@ facoltativa 10–79 byte, solo per l'azione e solo via ambiente OBE.
   "encrypted": false,
   "metrics": {"cpu_percent": null, "memory_mb": null, "uptime_seconds": 0},
   "events": [{"id": 1, "time": "2026-10-21T20:00:00Z", "level": "info", "message": "Pannello pronto"}],
-  "version": {"panel": "0.2.0", "encoder": null}
+  "version": {"panel": "0.3.0", "encoder": null}
 }
 ```
 
-`phase`: idle/probing/starting/running/reconnecting/stopping/error.
+`phase`: idle/probing/starting/running/reconnecting/restart_wait/stopping/error.
 `signal_state`: unknown/receiving/reconnecting/stopped.
 `signal`, quando noto: `{width,height,scan:"i"|"p",fps:"25/1",audio:string|null}`.
 `encoding_started` solo dopo conferma CLI; `running` non certifica una consegna
@@ -83,6 +85,59 @@ Le modifiche non salvate restano nel form e non sono sovrascritte dal polling.
 Prima di probe/start richiedere salvataggio della bozza; passphrase mai in storage,
 URL, log o export e cancellata dal form dopo l'azione. Errori e disconnessione API
 devono essere visibili; nessun avvio al caricamento o riavvio automatico del server.
+
+## Recupero dopo crash e diagnostica
+
+Il recupero è una scelta per il singolo avvio, senza modifiche al profilo salvato.
+Si arma dopo la prima conferma `Encoding started`. Un'uscita imprevista (anche
+con codice 0) consente al massimo tre riavvii, con attese di **2, 4 e 8 secondi**.
+Il budget non si azzera quando un retry riesce: serve un nuovo avvio manuale.
+Ogni retry esegue nuovamente probe e configurazione, usando lo stesso profilo e
+la stessa chiave SRT in memoria. I contatori di telemetria ripartono da zero.
+
+`restart_wait` indica un riavvio in attesa senza processo vivo. Start, probe e
+salvataggio sono bloccati con 409 anche in questa fase. Stop cancella sessione e
+timer, compreso un retry concorrente alla creazione del processo. Spegnere o
+riavviare il pannello lascia l'encoder fermo; non c'è recupero delle sessioni da disco.
+
+Probe, errori iniziali, mancata conferma entro 20 secondi, ingresso non supportato
+e cambio formato non attivano il recupero. Dopo il primo avvio riuscito, un crash
+durante il probe di un retry consuma il budget restante; un timeout esplicito
+del probe o dell'avvio è terminale. Una sorgente temporaneamente assente usa la
+riconnessione interna di OBE, senza cambiare PID né consumare tentativi.
+Stop, errore terminale ed esaurimento budget rimuovono la chiave dalla sessione.
+
+`GET /api/state` aggiunge `recovery`:
+
+```json
+{
+  "enabled": true, "active": true,
+  "attempts": 1, "max_attempts": 3,
+  "next_retry_seconds": 3.2, "exhausted": false,
+  "last_exit": {
+    "time": "2026-10-21T20:00:00Z", "pid": 123, "action": "start",
+    "returncode": -9, "signal": "SIGKILL", "expected": false,
+    "reason": "process_signal", "uptime_seconds": 12.5, "restart_attempt": 1
+  },
+  "history": []
+}
+```
+
+`active` indica una sessione di encoding attiva, anche con recupero disabilitato;
+`enabled` descrive la policy dell'ultima sessione. `attempts` conta i retry già
+iniziati; `next_retry_seconds` è `null` quando non c'è un timer. `exhausted`
+resta vero dopo l'esaurimento, fino alla prossima azione probe/start.
+
+`history` contiene le ultime **10 uscite**, dalla più vecchia alla più recente;
+`last_exit` è l'ultima o `null`. Il tentativo 0 è l'avvio manuale. `expected`
+indica un arresto richiesto dal pannello, anche per un timeout. `returncode` è
+negativo per un segnale; `signal` è il nome POSIX o `null`. Per un avvio fallito
+senza processo, PID e codice sono `null` e la durata è zero.
+Cause: `process_signal`, `process_exit`, `operator_stop`, `panel_shutdown`,
+`probe_complete`, `probe_timeout`, `start_timeout`, `unsupported_input`,
+`operation_failed`, `spawn_failed`, `encoder_unavailable`.
+Lo storico è solo in RAM, senza URL, ambiente o passphrase, e si svuota al riavvio
+del servizio. Non sostituisce un crash dump o un registro persistente.
 
 ## Telemetria del flusso
 

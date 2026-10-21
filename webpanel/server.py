@@ -19,7 +19,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qsl, quote, quote_plus, unquote, urlsplit
 
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
+RESTART_DELAYS = (2, 4, 8)
 TELEMETRY_COUNTERS = ("video_frames", "video_bytes", "output_bytes", "output_datagrams", "output_errors")
 TELEMETRY_FIELDS = {"schema", "monotonic_ns", *TELEMETRY_COUNTERS, "video_queue_frames"}
 TELEMETRY_MAX_AGE = 5
@@ -153,9 +154,20 @@ def clean_log(message, secret=""):
     return message[:1000].strip()
 
 
+class Session:
+    def __init__(self, config, secret, auto_restart):
+        self.config, self.secret, self.enabled = dict(config), secret, auto_restart
+        self.active, self.armed, self.exhausted = True, False, False
+        self.attempts, self.retry_at = 0, None
+        self.cancel = threading.Event()
+
+
 class Run:
-    def __init__(self, process, secret, action):
+    def __init__(self, process, secret, action, session=None):
         self.process, self.secret, self.action = process, secret, action
+        self.session = session
+        self.restart_attempt = session.attempts if session else 0
+        self.exit_reason = None
         self.ready, self.started, self.exited = threading.Event(), threading.Event(), threading.Event()
         self.cancel = threading.Event()
         self.stop_lock = threading.Lock()
@@ -179,6 +191,8 @@ class Panel:
         self.root, self.state_dir = Path(root).resolve(), Path(state_dir).resolve()
         self.lock = threading.RLock()
         self.run = None
+        self.session = None
+        self.exit_history = deque(maxlen=10)
         self.closing = False
         self.config, self.revision = dict(DEFAULT_CONFIG), 1
         self.phase, self.message = "idle", "Encoder fermo"
@@ -205,7 +219,8 @@ class Panel:
                             "level": level, "message": message})
 
     def _busy(self):
-        return self.run is not None and (not self.run.exited.is_set() or self.phase == "stopping")
+        return bool((self.session and self.session.active) or
+                    (self.run is not None and (not self.run.exited.is_set() or self.phase == "stopping")))
 
     def _revision(self, payload):
         if type(payload.get("revision")) is not int:
@@ -235,8 +250,76 @@ class Panel:
                     "encoding_started": self.encoding_started and alive,
                     "pid": run.process.pid if alive else None, "signal_state": self.signal_state,
                     "signal": dict(self.signal) if self.signal else None, "encrypted": self.encrypted and alive,
-                    "metrics": metrics, "telemetry": self._telemetry_state(run, alive), "events": list(self.events),
+                    "metrics": metrics, "telemetry": self._telemetry_state(run, alive),
+                    "recovery": self._recovery_state(), "events": list(self.events),
                     "version": {"panel": VERSION, "encoder": self.encoder_version}}
+
+    def _recovery_state(self):
+        session = self.session
+        remaining = None if not session or session.retry_at is None else round(max(0, session.retry_at - time.monotonic()), 1)
+        history = [dict(entry) for entry in self.exit_history]
+        return {"enabled": bool(session and session.enabled), "active": bool(session and session.active),
+                "attempts": session.attempts if session else 0, "max_attempts": len(RESTART_DELAYS),
+                "next_retry_seconds": remaining, "exhausted": bool(session and session.exhausted),
+                "last_exit": history[-1] if history else None, "history": history}
+
+    def _cancel_session(self):
+        if self.session:
+            self.session.active = False
+            self.session.cancel.set()
+            self.session.retry_at, self.session.secret = None, ""
+
+    def _record_exit(self, run, reason=None, action="start"):
+        code = run.process.returncode if run else None
+        signame = None
+        if code is not None and code < 0:
+            try:
+                signame = signal.Signals(-code).name
+            except ValueError:
+                signame = f"SIG{-code}"
+        entry = {"time": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+                 "pid": run.process.pid if run else None, "action": run.action if run else action,
+                 "returncode": code, "signal": signame, "expected": bool(run and run.expected_exit),
+                 "reason": reason or (run.exit_reason if run else None) or ("process_signal" if signame else "process_exit"),
+                 "uptime_seconds": round(time.monotonic() - run.start_time, 1) if run else 0,
+                 "restart_attempt": run.restart_attempt if run else self.session.attempts if self.session else 0}
+        self.exit_history.append(entry)
+        return entry
+
+    def _schedule_restart(self):
+        session = self.session
+        if not session or not session.active or not session.enabled or not session.armed or self.closing:
+            self._cancel_session()
+            return
+        if session.attempts >= len(RESTART_DELAYS):
+            session.exhausted = True
+            self._cancel_session()
+            self.phase, self.message = "error", "Recupero interrotto: esauriti i 3 tentativi. Controlla la diagnostica."
+            self._event("error", self.message)
+            return
+        delay = RESTART_DELAYS[session.attempts]
+        session.retry_at = time.monotonic() + delay
+        self.phase = "restart_wait"
+        self.message = f"Processo terminato; riavvio {session.attempts + 1}/{len(RESTART_DELAYS)} tra {delay} secondi."
+        self._event("warning", self.message)
+        threading.Thread(target=self._restart, args=(session, delay), daemon=True).start()
+
+    def _restart(self, session, delay):
+        if session.cancel.wait(delay):
+            return
+        with self.lock:
+            if session is not self.session or not session.active or self.closing:
+                return
+            session.retry_at = None
+            session.attempts += 1
+            self._event("warning", f"Avvio automatico {session.attempts}/{len(RESTART_DELAYS)}.")
+            try:
+                self._launch("start", session.config, session.secret, session)
+            except APIError as error:
+                self.phase, self.message = "error", error.message
+                self._record_exit(None, error.code)
+                self._event("error", error.message)
+                self._schedule_restart()
 
     def _telemetry_state(self, run, alive):
         result = {key: None for key in (*TELEMETRY_COUNTERS, "video_queue_frames",
@@ -335,8 +418,11 @@ class Panel:
             return self.state()
 
     def action(self, kind, payload):
-        if kind not in {"probe", "start"} or not isinstance(payload, dict) or not {"revision"} <= set(payload) <= {"revision", "passphrase"}:
+        allowed = {"revision", "passphrase", "auto_restart"} if kind == "start" else {"revision", "passphrase"}
+        if kind not in {"probe", "start"} or not isinstance(payload, dict) or not {"revision"} <= set(payload) <= allowed:
             raise APIError(422, "invalid_request", "Richiesta di avvio o verifica non valida.")
+        if type(payload.get("auto_restart", False)) is not bool:
+            raise APIError(422, "invalid_request", "auto_restart deve essere un valore booleano.")
         secret = payload.get("passphrase", "")
         if not isinstance(secret, str) or any(control(c) for c in secret) or (secret and not 10 <= len(secret.encode("utf-8")) <= 79):
             raise APIError(422, "invalid_passphrase", "La chiave SRT deve contenere 10–79 byte senza caratteri di controllo.")
@@ -348,28 +434,40 @@ class Panel:
                 raise APIError(409, "encoder_busy", "È già in corso un'operazione sull'encoder.")
             if secret and urlsplit(self.config["input_url"]).scheme != "srt":
                 raise APIError(422, "invalid_passphrase", "La chiave è utilizzabile soltanto con un ingresso SRT.")
-            launcher, stdbuf = self.root / "run.sh", shutil.which("stdbuf")
-            if not launcher.is_file() or not os.access(launcher, os.X_OK) or not stdbuf:
-                raise APIError(500, "encoder_unavailable", "run.sh eseguibile e stdbuf sono necessari per avviare OBE.")
-            env = dict(os.environ)
-            env.pop("OBE_SRT_PASSPHRASE", None)
-            if secret:
-                env["OBE_SRT_PASSPHRASE"] = secret
+            self.session = Session(self.config, secret, payload.get("auto_restart", False)) if kind == "start" else None
             try:
-                process = subprocess.Popen([stdbuf, "-oL", "-eL", str(launcher)], cwd=self.root, env=env,
-                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                           start_new_session=True)
-            except OSError:
-                raise APIError(500, "spawn_failed", "Impossibile avviare il processo OBE.") from None
-            run = self.run = Run(process, secret, kind)
-            self.phase, self.message = "probing", "Verifica della sorgente in corso…"
-            self.signal, self.signal_state, self.encoding_started = None, "unknown", False
-            self.encrypted = bool(secret)
-            self._event("info", "Verifica della sorgente avviata.")
-            run.collector = threading.Thread(target=self._collect, args=(run,), daemon=True)
-            run.collector.start()
-            threading.Thread(target=self._configure, args=(run, dict(self.config)), daemon=True).start()
+                self._launch(kind, self.config, secret, self.session)
+            except APIError as error:
+                self.phase, self.message = "error", error.message
+                self._record_exit(None, error.code, kind)
+                self._event("error", error.message)
+                self._cancel_session()
+                raise
             return self.state()
+
+    def _launch(self, kind, config, secret, session):
+        # Called under the panel lock, including retries; Stop cannot miss a new child.
+        launcher, stdbuf = self.root / "run.sh", shutil.which("stdbuf")
+        if not launcher.is_file() or not os.access(launcher, os.X_OK) or not stdbuf:
+            raise APIError(500, "encoder_unavailable", "run.sh eseguibile e stdbuf sono necessari per avviare OBE.")
+        env = dict(os.environ)
+        env.pop("OBE_SRT_PASSPHRASE", None)
+        if secret:
+            env["OBE_SRT_PASSPHRASE"] = secret
+        try:
+            process = subprocess.Popen([stdbuf, "-oL", "-eL", str(launcher)], cwd=self.root, env=env,
+                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                       start_new_session=True)
+        except OSError:
+            raise APIError(500, "spawn_failed", "Impossibile avviare il processo OBE.") from None
+        run = self.run = Run(process, secret, kind, session)
+        self.phase, self.message = "probing", "Verifica della sorgente in corso…"
+        self.signal, self.signal_state, self.encoding_started = None, "unknown", False
+        self.encrypted = bool(secret)
+        self._event("info", "Verifica della sorgente avviata.")
+        run.collector = threading.Thread(target=self._collect, args=(run,), daemon=True)
+        run.collector.start()
+        threading.Thread(target=self._configure, args=(run, dict(config)), daemon=True).start()
 
     def _send(self, run, text):
         with self.lock:
@@ -397,16 +495,16 @@ class Panel:
                         f"set input opts location={config['input_url']}\nprobe input\n")
             if not self._send(run, commands) or not self._await(run, run.ready, 20):
                 if not run.cancel.is_set():
-                    self._fail(run, "La sorgente non ha completato il probe. Controlla il segnale e gli eventi.")
+                    self._fail(run, "La sorgente non ha completato il probe. Controlla il segnale e gli eventi.", "probe_timeout")
                 return
             if run.video_id is None or not run.signal:
-                self._fail(run, "Il probe non ha rilevato un flusso video supportato.")
+                self._fail(run, "Il probe non ha rilevato un flusso video supportato.", "unsupported_input")
                 return
             if run.action == "probe":
                 self._finish(run, "Verifica completata; encoder fermo", error=False)
                 return
             with self.lock:
-                if run.cancel.is_set():
+                if run is not self.run or run.cancel.is_set():
                     return
                 self.phase, self.message = "starting", "Avvio della codifica…"
                 run.start_sent = True
@@ -420,7 +518,7 @@ class Panel:
                         f"set outputs 1\nset output opts 0:type=udp,target={config['output_url']}\nstart\n")
             if not self._send(run, commands) or not self._await(run, run.started, 20):
                 if not run.cancel.is_set():
-                    self._fail(run, "OBE non ha confermato l'avvio della codifica. Controlla gli eventi.")
+                    self._fail(run, "OBE non ha confermato l'avvio della codifica. Controlla gli eventi.", "start_timeout")
                 return
         except Exception:
             self._fail(run, "L'operazione OBE non è stata completata.")
@@ -459,6 +557,8 @@ class Panel:
             if run.cancel.is_set():
                 return
             if line == "Encoding started" and run.start_sent:
+                if run.session is self.session and run.session and run.session.active:
+                    run.session.armed = True
                 self.encoding_started = True
                 if self.signal_state != "stopped":
                     self.phase = "reconnecting" if self.signal_state == "reconnecting" else "running"
@@ -477,6 +577,8 @@ class Panel:
                     if self.encoding_started:
                         self.phase, self.message = "reconnecting", "Sorgente assente; riconnessione in corso…"
                 elif "stopped (" in line:
+                    self._cancel_session()
+                    run.exit_reason = "unsupported_input"
                     self.signal_state = "stopped"
                     self.phase, self.message = "error", "Il formato della sorgente richiede un nuovo probe. Ferma l'encoder."
 
@@ -504,14 +606,18 @@ class Panel:
             run.process.stdout.close()
             run.process.stdin.close()
             with self.lock:
+                run.cancel.set()
                 run.secret = ""
                 if run is self.run:
+                    entry = self._record_exit(run)
                     self.encoding_started, self.encrypted = False, False
                     if not run.expected_exit:
                         self.phase, self.message = "error", "Il processo OBE è terminato. Controlla gli eventi prima di riavviare."
                         self.signal_state = "stopped"
-                        self._event("error", self.message)
+                        self._event("error", f"Processo OBE terminato: {entry['signal'] or 'codice ' + str(entry['returncode'])}.")
                 run.exited.set()
+                if run is self.run and not run.expected_exit:
+                    self._schedule_restart()
 
     def _terminate(self, run):
         with run.stop_lock:
@@ -535,30 +641,39 @@ class Panel:
             if run.collector is not threading.current_thread():
                 run.exited.wait(2)
 
-    def _finish(self, run, message, error):
+    def _finish(self, run, message, error, reason=None):
         with self.lock:
             if run is not self.run or run.cancel.is_set():
                 return
             self.phase, self.message = "stopping", "Arresto del processo OBE…"
             run.expected_exit = True
+            run.exit_reason = reason or ("operation_failed" if error else "probe_complete")
+            completion_reason = run.exit_reason
+            self._cancel_session()
         self._terminate(run)
         with self.lock:
-            if run is self.run:
+            if run is self.run and run.exit_reason == completion_reason:
                 self.phase, self.message = ("error" if error else "idle"), message
                 self.encoding_started, self.encrypted = False, False
                 if error:
                     self.signal_state = "stopped"
                 self._event("error" if error else "info", message)
 
-    def _fail(self, run, message):
-        self._finish(run, message, error=True)
+    def _fail(self, run, message, reason="operation_failed"):
+        self._finish(run, message, error=True, reason=reason)
 
     def stop(self):
         with self.lock:
+            waiting = bool(self.session and self.session.retry_at is not None)
+            self._cancel_session()
             run = self.run
+            if run is not None:
+                run.exit_reason = "panel_shutdown" if self.closing else "operator_stop"
             if run is None or run.exited.is_set():
-                self.phase, self.message = "idle", "Encoder fermo"
+                self.phase, self.message, self.signal_state = "idle", "Encoder fermo", "stopped"
                 self.encoding_started, self.encrypted = False, False
+                if waiting:
+                    self._event("info", "Riavvio automatico annullato; encoder fermo.")
                 return self.state()
             self.phase, self.message = "stopping", "Arresto del processo OBE…"
             run.expected_exit = True
