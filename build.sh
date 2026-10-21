@@ -12,6 +12,7 @@ LIBMPEGTS_TAG=hevc-dev
 X265_TAG=ef1c5205fc14d436b71b1459eba0c85fec0013b7
 X264_BITDEPTH=8
 LIBLTNTSTOOLS_TAG=4fbb32125bc1ea095cf26a0f7b1b279082fdd592
+VAPOURSYNTH_TAG=R70
 NDI_SDK=$PWD/NDI/sdk
 
 
@@ -157,11 +158,11 @@ if [ ! -d libklscte35 ]; then
 fi
 
 if [ ! -d zimg ]; then
-    git clone https://bitbucket.org/the-sekrit-twc/zimg.git --depth 1 --recurse-submodules --shallow-submodules
+    git clone https://github.com/sekrit-twc/zimg.git --depth 1 --recurse-submodules --shallow-submodules
 fi
 
 if [ ! -d vapoursynth ]; then
-    git clone https://github.com/vapoursynth/vapoursynth.git --depth 1 --recurse-submodules --shallow-submodules
+    git clone https://github.com/vapoursynth/vapoursynth.git --branch "$VAPOURSYNTH_TAG" --depth 1 --recurse-submodules --shallow-submodules
 fi
 
 if [ ! -d obe-rt ]; then
