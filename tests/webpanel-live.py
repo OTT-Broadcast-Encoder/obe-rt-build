@@ -8,7 +8,9 @@ import argparse
 import importlib.util
 import json
 import math
+import os
 from pathlib import Path
+import signal
 import socket
 import subprocess
 import sys
@@ -56,11 +58,13 @@ def telemetry_ready(state):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--format', choices=('pal', '1080i50'), default='pal')
+    parser.add_argument('--recovery', action='store_true', help='Kill only the managed test encoder and verify automatic recovery')
     args = parser.parse_args()
     width, height = (1920, 1080) if args.format == '1080i50' else (720, 576)
     video_kbps, mux_kbps = (8000, 9500) if height == 1080 else (5000, 6500)
     original = request()
     assert not original['process_alive'], 'Stop the encoder before running this isolated test'
+    assert not original.get('recovery', {}).get('active'), 'Cancel pending retries before this test'
     directory = Path(tempfile.mkdtemp(prefix='webpanel-live-', dir=base.ROOT/'tests/.build'))
     source_port = base.port()
     receiver = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -69,12 +73,17 @@ def main():
     output_port = receiver.getsockname()[1]
     finished = threading.Event()
     media = directory/'output.ts'
+    recovered_media = directory/'recovered.ts'
+    capture_recovery = threading.Event()
 
     def capture():
-        with media.open('wb') as output:
+        with media.open('wb') as output, recovered_media.open('wb') as restarted_output:
             while not finished.is_set():
                 try:
-                    output.write(receiver.recv(65536))
+                    data = receiver.recv(65536)
+                    output.write(data)
+                    if capture_recovery.is_set():
+                        restarted_output.write(data)
                 except socket.timeout:
                     pass
 
@@ -88,6 +97,7 @@ def main():
                '-g', '12', '-c:a', 'mp2', '-b:a', '192k', '-ac', '2', '-f', 'mpegts',
                f'udp://127.0.0.1:{source_port}?pkt_size=1316']
     sender = None
+    sender_log = (directory/'sender.log').open('wb')
     try:
         config = dict(original['config'], name=f'Collaudo webpanel {args.format}',
                       input_url=f'udp://127.0.0.1:{source_port}',
@@ -96,11 +106,11 @@ def main():
                       bframes=0, lookahead_frames=0, gop_frames=25, threads=2, audio_bitrate_kbps=192)
         state = request('/api/config', {'revision': original['revision'], 'config': config}, 'PUT')
         sender = subprocess.Popen(command, cwd=base.ROOT, env=base.ENV,
-                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=sender_log)
         request('/api/probe', {'revision': state['revision']}, 'POST')
         probe = wait(lambda s: s['phase'] == 'idle')
         assert probe['signal']['width'] == width and not probe['encoding_started'], probe
-        request('/api/start', {'revision': state['revision']}, 'POST')
+        request('/api/start', {'revision': state['revision'], 'auto_restart': args.recovery}, 'POST')
         wait(lambda s: s['phase'] == 'running' and s['signal_state'] == 'receiving')
         time.sleep(4)
         running = wait(telemetry_ready)
@@ -111,9 +121,11 @@ def main():
                       and s['telemetry']['output_bytes'] > first['output_bytes'])['telemetry']
         base.stop_sender(sender)
         sender = None
-        wait(lambda s: s['phase'] == 'reconnecting')
+        reconnecting = wait(lambda s: s['phase'] == 'reconnecting')
+        assert reconnecting['pid'] == running['pid']
+        assert reconnecting['recovery']['attempts'] == 0
         sender = subprocess.Popen(command, cwd=base.ROOT, env=base.ENV,
-                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=sender_log)
         wait(lambda s: s['phase'] == 'running' and s['signal_state'] == 'receiving')
         time.sleep(4)
         recovered = wait(telemetry_ready)['telemetry']
@@ -126,9 +138,31 @@ def main():
         for before, after in zip(telemetry_samples, telemetry_samples[1:]):
             for key in ('video_frames', 'output_bytes', 'output_datagrams'):
                 assert after[key] >= before[key], (key, before, after)
+        recovery_result = None
+        if args.recovery:
+            crashed_at = time.monotonic()
+            os.kill(running['pid'], signal.SIGKILL)
+            pending = wait(lambda s: s['phase'] == 'restart_wait')
+            assert not pending['process_alive']
+            assert pending['recovery']['last_exit']['signal'] == 'SIGKILL'
+            capture_recovery.set()
+            restarted = wait(lambda s: s['phase'] == 'running' and s['pid'] != running['pid']
+                             and telemetry_ready(s))
+            assert restarted['recovery']['attempts'] == 1
+            assert restarted['config'] == config
+            assert restarted['telemetry']['output_errors'] == 0
+            time.sleep(4)
+            recovery_result = {'old_pid': running['pid'], 'new_pid': restarted['pid'],
+                               'recovery_seconds': round(time.monotonic()-crashed_at-4, 2),
+                               'telemetry': restarted['telemetry'],
+                               'exit': pending['recovery']['last_exit']}
+            # End the media capture gracefully. SIGKILL can truncate the final
+            # audio PES, which is expected at a crash and is not a decode failure
+            # in the recovered stream. Test cancellation in a separate run below.
         request('/api/stop', {}, 'POST')
         stopped = wait(lambda s: s['phase'] == 'idle')
         assert not stopped['process_alive']
+        assert not stopped['recovery']['active']
         assert stopped['telemetry']['status'] == 'idle', stopped['telemetry']
         for key in ('age_seconds', 'video_bitrate_kbps', 'output_bitrate_kbps', 'video_fps',
                     'video_frames', 'video_queue_frames', 'output_errors', 'output_bytes',
@@ -144,16 +178,37 @@ def main():
         base.run(['ffmpeg', '-v', 'error', '-xerror', '-i', str(media), '-t', '2',
                   '-map', '0:v:0', '-map', '0:a:0', '-f', 'null', '-'],
                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        if args.recovery:
+            assert recovered_media.stat().st_size > 100_000
+            base.run(['ffmpeg', '-v', 'error', '-xerror', '-i', str(recovered_media), '-t', '2',
+                      '-map', '0:v:0', '-map', '0:a:0', '-f', 'null', '-'],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            recovery_result['decoded_bytes'] = recovered_media.stat().st_size
+            request('/api/start', {'revision': state['revision'], 'auto_restart': True}, 'POST')
+            cancellation_run = wait(lambda s: s['phase'] == 'running' and telemetry_ready(s))
+            os.kill(cancellation_run['pid'], signal.SIGKILL)
+            wait(lambda s: s['phase'] == 'restart_wait')
+            request('/api/stop', {}, 'POST')
+            time.sleep(2.5)
+            assert request()['phase'] == 'idle' and not request()['recovery']['active']
         result = {'status': 'PASS', 'probe': probe['signal'], 'metrics': running['metrics'],
                   'telemetry': {'samples': telemetry_samples, 'stopped': stopped['telemetry']},
                   'output_bytes': media.stat().st_size,
                   'checks': ['probe', 'start', 'metrics', 'live telemetry', 'monotonic counters',
                              'reconnect', 'stop', 'idle telemetry', 'AVC/MP2 decode']}
+        if args.recovery:
+            result['recovery'] = recovery_result
+            result['checks'] += ['SIGKILL recovery', 'new PID and telemetry', 'recovered AVC/MP2 decode',
+                                 'stop cancels retry']
         (directory/'result.json').write_text(json.dumps(result, indent=2)+'\n')
         print(json.dumps(result))
         print(f'Artifacts: {directory}')
+    except Exception:
+        (directory/'failure.json').write_text(json.dumps(request(), indent=2)+'\n')
+        raise
     finally:
         base.stop_sender(sender)
+        sender_log.close()
         request('/api/stop', {}, 'POST')
         finished.set()
         thread.join(timeout=2)

@@ -44,7 +44,8 @@ non sostituiscono l'autenticazione per un servizio pubblico.
    già avviato; il salvataggio è bloccato durante le operazioni dell'encoder.
 3. Verificare l'ingresso: OBE rileva risoluzione, scansione, cadenza e audio.
    Il probe non avvia l'encoding e richiede una sorgente disponibile.
-4. Avviare. Il pannello mostra la conferma CLI, lo stato di ricezione o
+4. Scegliere in **Recupero del processo** se abilitare il recupero automatico
+   per l'avvio; il valore predefinito è manuale. Avviare. Il pannello mostra la conferma CLI, lo stato di ricezione o
    riconnessione e i log del processo gestito. Arrestare prima di riconfigurare.
 
 Input: protocolli di rete supportati da OBE, inclusi UDP/RTP e SRT. Output:
@@ -61,7 +62,9 @@ attivata dal launcher. Nessun inoltro sul router viene predisposto.
 Per SRT, inserire facoltativamente la passphrase nell'apposito campo prima
 dell'azione. È passata soltanto nell'ambiente del processo e non viene salvata
 nel profilo, restituita dall'API o conservata dal browser. Il campo viene svuotato
-dopo l'azione: reinserirla dopo un probe per avviare un nuovo processo. URL con
+dopo l'azione: reinserirla dopo un probe o uno Stop per avviare una nuova sessione.
+Durante il recupero automatico resta in memoria per i retry della stessa sessione;
+viene rimossa dalla sessione allo Stop, all'errore terminale o all'esaurimento dei tentativi. URL con
 credenziali o parametri crypto sono rifiutati. Questo primo pannello non gestisce
 URL HTTP con token o autenticazione incorporata.
 
@@ -85,8 +88,30 @@ flusso non disponibile. Per abilitarla serve ricompilare anche `obe-rt` dal
 branch `feat/encoder-telemetry`; la sola modifica del pannello non basta.
 Il primo commit del core che espone questi contatori è `ee5f5a5`.
 
-I log sono limitati e mantenuti in memoria; la riconnessione automatica del
-lettore OBE resta operativa, ma un crash dell'encoder richiede un nuovo avvio.
+I log sono limitati e mantenuti in memoria. La riconnessione della sorgente nel
+lettore OBE mantiene lo stesso processo ed è distinta dal recupero dopo crash.
+
+## Recupero dopo crash
+
+L'opzione **Automatico · 3 tentativi** consente tre riavvii con attese di 2, 4 e 8
+secondi. Si attiva solo dopo la prima conferma di codifica: gli errori iniziali
+restano visibili e richiedono una correzione. Il budget vale per tutta la sessione,
+anche se un tentativo riesce, e si azzera con un nuovo avvio manuale.
+
+Durante l'attesa la panoramica mostra il prossimo tentativo e consente **Arresta
+encoder**, che cancella i retry anche senza processo vivo. Configurazione, probe
+e start rimangono bloccati fino allo Stop o alla fine del recupero. Riavviare il
+pannello non avvia l'encoder e non ripristina la policy dalla sessione precedente.
+
+La voce **Diagnostica · ultime 10 uscite** mostra orario, PID, causa, codice o
+segnale, durata e numero del tentativo. Le uscite sono conservate solo nella RAM
+del pannello, senza segreti, e si perdono al riavvio del servizio. Un cambio formato
+o un timeout di probe/avvio interrompe il recupero e richiede un intervento manuale.
+
+Il nuovo processo ripete il probe (circa 8 secondi) e azzera i contatori. Il
+recupero interrompe la trasmissione e non garantisce continuità di PCR/PTS o
+riaggancio su ogni ricevitore; il crash può troncare l'ultimo PES audio/video.
+Un processo bloccato ma vivo richiederà un controllo di stallo separato.
 
 Il vecchio listener web OBE rimane disabilitato: il pannello non usa i suoi
 campi fissi come telemetria. Non abilita la vecchia scrittura periodica di
@@ -100,7 +125,10 @@ stop durante probe, crash, mancata conferma di avvio, riconnessione e protezione
 della passphrase, incluso il blocco degli avvii durante lo spegnimento del servizio.
 La suite include anche rate, scadenza dei campioni, contatori non validi,
 compatibilità con binari precedenti e isolamento tra processi.
-Tutti i 15 test sono passati il 21 ottobre 2026. Il test standalone del core
+La suite con recupero include 26 test, passati il 21 ottobre 2026: riavvio opt-in,
+budget 2/4/8 secondi, errori iniziali e timeout, Stop durante backoff o spawn,
+completamenti tardivi, isolamento della chiave SRT, storico limitato e nessun
+autoavvio al riavvio del servizio. Il test standalone del core
 `obe-rt/tests/statistics.c` verifica incrementi concorrenti, range e reset;
 compilato con ASan/UBSan e superato.
 
@@ -109,6 +137,8 @@ Con il pannello attivo e l'encoder fermo, il test reale si esegue nel container:
 ```sh
 docker exec obe-webpanel python3 tests/webpanel-live.py
 docker exec obe-webpanel python3 tests/webpanel-live.py --format 1080i50
+docker exec obe-webpanel python3 tests/webpanel-live.py --recovery
+docker exec obe-webpanel python3 tests/webpanel-live.py --format 1080i50 --recovery
 ```
 
 Il test usa sorgente sintetica e porte UDP su loopback, ripristinando il profilo
@@ -116,6 +146,28 @@ iniziale al termine. Probe, start, ricezione, metriche, interruzione/riconnessio
 stop e decodifica AVC/MP2 sono passati. Il campione PAL rilevato era 720×576i,
 25 frame/s, audio stereo 48 kHz; l'uscita acquisita era di 7.663.068 byte.
 Artefatti iniziali: `tests/.build/webpanel-live-o_jul3gd/`, esclusi da Git.
+
+Con `--recovery` il test invia SIGKILL soltanto al proprio encoder di collaudo,
+verifica nuovo PID, stesso profilo e ripresa della telemetria, e decodifica
+separatamente l'AVC/MP2 ricevuto dopo il riavvio. L'acquisizione termina con Stop
+regolare per evitare che un secondo crash tronchi l'ultimo PES del campione.
+Una sessione successiva verifica Stop durante l'attesa del riavvio. Log del
+mittente, stato in caso di errore e risultati rimangono in `tests/.build/`.
+
+Il collaudo crash PAL e 1080i50 è passato il 21 ottobre 2026, con ripresa di
+processo e telemetria rispettivamente in **15,31 s e 14,12 s**, inclusi attesa e
+nuovo probe. I campioni ripresi, di 5.250.840 e 7.164.304 byte, hanno superato
+la decodifica AVC/MP2 di due secondi. Risultati: `tests/.build/webpanel-live-onpax4a8/` (PAL) e
+`tests/.build/webpanel-live-gfp47ru2/` (HD). Il primo tentativo PAL ha incontrato
+un timeout della sorgente dopo il riavvio; la successiva prova completa è passata.
+Questi tempi sono osservazioni di laboratorio, non una garanzia sotto carico.
+
+La revisione del recupero è isolata nel branch `feat/webpanel-recovery` e nel
+container `obe-webpanel-recovery`, accessibile localmente su porta **18090**.
+Usa gli artefatti compilati esistenti in sola lettura e un proprio profilo.
+Per accedervi dal PC: `ssh -N -L 18090:127.0.0.1:18090 mini-server`, poi aprire
+`http://127.0.0.1:18090`. Il collaudo di 24 ore e il riaggancio dei ricevitori
+reali restano da completare.
 
 La revisione con telemetria è stata collaudata anche sul vero encoder PAL e
 1080i50, includendo interruzione/ripresa sorgente e decodifica AVC/MP2.
@@ -140,6 +192,9 @@ orizzontale. Snapshot Lighthouse della panoramica:
 accessibilità 100/100, best practices 100/100; non è una certificazione completa
 di accessibilità. Nessuna richiesta a servizi esterni; console pulita dopo il
 ricaricamento con il servizio disponibile.
+
+I controlli del recupero sono stati verificati a 1440 e 390 px, compresi selezione
+della policy per l'avvio, blocco di Start durante l'attesa, diagnostica e Stop.
 
 Restano fuori da questa versione preview video, livelli audio, statistiche SRT,
 account/ruoli, più encoder e il collaudo prolungato. Contratto API:

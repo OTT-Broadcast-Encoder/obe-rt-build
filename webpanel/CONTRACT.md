@@ -119,7 +119,11 @@ Stop, errore terminale ed esaurimento budget rimuovono la chiave dalla sessione.
     "returncode": -9, "signal": "SIGKILL", "expected": false,
     "reason": "process_signal", "uptime_seconds": 12.5, "restart_attempt": 1
   },
-  "history": []
+  "history": [{
+    "time": "2026-10-21T20:00:00Z", "pid": 123, "action": "start",
+    "returncode": -9, "signal": "SIGKILL", "expected": false,
+    "reason": "process_signal", "uptime_seconds": 12.5, "restart_attempt": 1
+  }]
 }
 ```
 

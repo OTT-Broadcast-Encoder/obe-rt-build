@@ -142,9 +142,11 @@ Primo incremento richiesto dall'utente: **completato**. [Guida e limiti](../docs
   frame codificati, coda video ed errori di invio; campioni scaduti o assenti espliciti.
   Verifiche: 15 test API/parser, test atomici C con ASan/UBSan, encoding reale PAL
   e 1080i50 con riconnessione e controllo browser. [Misure e limiti](../docs/webpanel.md).
-- **P0 — Affidabilità:** recupero opzionale dopo crash con budget di tentativi e
-  attesa progressiva, arresto che cancella ogni riavvio, diagnostica dell'uscita.
-  La riconnessione della sorgente già presente è distinta dal riavvio del processo.
+- **P0 — Affidabilità (primo incremento completato):** recupero opzionale dopo
+  crash, tre retry con attese di 2/4/8 secondi, Stop che cancella ogni riavvio e
+  diagnostica delle ultime 10 uscite in RAM. Test di concorrenza, budget e chiavi
+  SRT superati; nessun autoavvio al riavvio del pannello. La riconnessione della
+  sorgente resta distinta. Il collaudo prolungato e il rilevamento stalli restano aperti.
 - **P0 — Qualità e compressione del motore OBE:** T08/T09 rimangono prioritari;
   benchmark riproducibile PSNR/SSIM con allineamento verificato, bitrate effettivo,
   carico CPU e code prima di scegliere o modificare i preset 1080i.

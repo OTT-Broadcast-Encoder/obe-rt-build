@@ -5,9 +5,9 @@ indicato; `[ ]` = ancora da completare. Il completamento in laboratorio non
 equivale alla validazione sul percorso di trasmissione reale.
 
 **Telemetria, affidabilità e qualità/compressione sono tutte priorità P0.**
-Il primo incremento di telemetria è completato. I prossimi incrementi sono
-il recupero controllato dopo crash e il benchmark del motore OBE; la raccolta
-dei riferimenti può procedere in parallelo. Le date dipendono dalle misure.
+Il primo incremento di telemetria e il recupero controllato dopo crash sono
+completati in laboratorio. Seguono il collaudo prolungato e il benchmark del
+motore OBE. Le date dipendono dalle misure.
 
 ## P0 — Telemetria e diagnostica
 
@@ -26,14 +26,16 @@ Su 1080i50 il contatore misura 25 frame interi/s, corrispondenti a 50 semiquadri
 
 - [x] Riconnessione automatica dell'ingresso URL, collaudata con interruzioni e ripartenza del mittente.
 - [x] Avvio/arresto del solo processo gestito e blocco degli avvii durante lo spegnimento del pannello.
-- [ ] Riavvio opzionale dopo crash, con attesa progressiva e numero massimo di tentativi.
-- [ ] Stop che cancella anche i riavvii in attesa; nessun ciclo infinito o autoavvio dopo reboot.
-- [ ] Diagnostica dell'uscita: codice, segnale, causa e storico limitato dei tentativi.
-- [ ] Test di concorrenza tra start/stop/riavvio e isolamento dei dati tra processi successivi.
+- [x] Riavvio opzionale dopo crash: massimo tre tentativi con attese di 2, 4 e 8 secondi.
+- [x] Stop cancella anche i riavvii in attesa; budget esaurito terminale e nessun autoavvio al riavvio del servizio.
+- [x] Diagnostica dell'uscita: codice, segnale, causa, durata e ultime 10 uscite in RAM.
+- [x] Test di concorrenza tra start/stop/riavvio e isolamento dei dati tra processi successivi.
 - [ ] Collaudo prolungato con memoria, code, interruzioni e tempi di recupero sotto controllo.
 
-La riconnessione della sorgente è disponibile; il recupero dopo crash dell'encoder
-richiede ancora l'avvio manuale.
+Il recupero va abilitato per il singolo avvio. La riconnessione della sorgente
+rimane distinta e mantiene il PID. Il riavvio del processo interrompe il flusso e
+richiede un nuovo probe; non garantisce continuità MPEG-TS né rileva un processo
+bloccato ma ancora vivo. [Semantica e collaudo](docs/webpanel.md#recupero-dopo-crash).
 
 ## P0 — Qualità e compressione del motore OBE
 
