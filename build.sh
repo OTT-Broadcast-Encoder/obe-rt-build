@@ -179,6 +179,7 @@ if [ ! -d obe-rt ]; then
     git clone https://github.com/OTT-Broadcast-Encoder/obe-rt.git
     git -C obe-rt checkout "$OBE_TAG"
     git -C obe-rt apply ../patches/0008-obe-current-libraries.patch
+    git -C obe-rt apply ../patches/0011-obe-network-input.patch
 fi
 
 if [ ! -d x264 ]; then

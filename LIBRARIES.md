@@ -52,6 +52,10 @@ header subprojects in its upstream wrap files.
   for a literal single-file target. OBE uses it to preserve configured output
   filenames; segmented `.ts` recordings retain their timestamped names. It also
   returns the queued byte count from writes, as required by the API and OBE.
+- `0011-obe-network-input.patch` enables decoded network URL input, preserves
+  video signalling, and handles bounded network reads and queue growth. It
+  also fixes the MPEG-TS statistics lifecycle for current libltntstools and
+  keeps URL audio timing independent of hardware latency compensation.
 - The old ZVBI/libyuv/x265/FFmpeg patches remain as historical files but are
   not applied to this snapshot. x265 4.2 already contains the SEI allocation
   fixes; current FFmpeg includes the Binutils fix. PNG dependencies are
