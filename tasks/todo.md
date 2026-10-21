@@ -86,20 +86,24 @@ Stato: **parziale**. HD interlacciato nativo collaudato; conversioni da 1080p50 
 ## T08 — Automatizzare le misure di qualità [M3]
 
 Produrre risultati ripetibili dalla pipeline OBE, trasmettendo una sequenza nota al lettore URL e confrontandola con riferimenti allineati. Misurare separatamente eventuali alterazioni introdotte dal generatore o dalla contribuzione.
-- [ ] Runner con configurazione effettiva, revisioni, sorgente, bitrate video/TS, stuffing, CPU, memoria, code e latenza; output CSV e rapporto leggibile.
-- [ ] PSNR/SSIM e revisione visiva con trattamento dichiarato dei campi; VMAF eventualmente aggiunto in un'immagine di analisi separata e con modello fissato.
+- [x] Runner sintetico con hash di sorgente/binari/librerie, parametri x264 iniziali, bitrate AVC/TS, stuffing, CPU/RSS e code; output CSV e rapporto.
+- [x] PSNR/SSIM su 400 campi allineati, marker esclusi; controlli identità/degradazione, test di frame mancanti/scambiati e ritagli per confronto visivo.
+- [ ] Latenza end-to-end e revisione in movimento sul corpus reale; VMAF eventualmente aggiunto in un'immagine di analisi separata e con modello fissato.
 - Verifica: un riferimento senza alterazioni e una degradazione nota devono distinguersi; frame mancanti o disallineati rendono la prova non valida invece di produrre score fuorvianti.
 - Dipendenze: T01, T05 e T07. Dimensione: M.
-- File probabili, obe-rt-build: `tests/encoding/run`, `tests/encoding/measure`, `tests/encoding/report`, `tests/encoding/results-schema.json`, `docs/encoding-method.md`.
+- File: `tests/encoding-benchmark.py`, `tests/encoding-benchmark-test.py`, [metodo e risultati](../docs/encoding-benchmark.md), `docs/encoding-benchmark-results.csv`.
 
 ## T09 — Confrontare e selezionare i preset AVC [M3]
 
 Eseguire sweep piccoli e progressivi sul corpus, a bitrate confrontabili e entro il budget della macchina obiettivo.
-- [ ] Almeno quattro bitrate per configurazione candidata, registrando preset, GOP/B-frame/reference, AQ/psy, lookahead, VBV, speedcontrol e parametri applicati dopo gli adattamenti di OBE.
-- [ ] Finalisti ripetuti a carico comparabile; grafici qualità/bitrate e motivazione della scelta, con candidati fuori dai limiti real time esclusi dall'uso operativo.
+- [x] `veryfast`, `faster`, `medium` a 4/6/8/10 Mbit/s sullo stesso pattern; GOP/B-frame/reference, AQ/psy, lookahead, VBV e SEI iniziale registrati.
+- [x] Corretto il preset ignorato senza tuning (core `209e080`); test su 21 combinazioni, incluso nei controlli smoke della build.
+- [x] Sei finalisti a 6/8 Mbit/s ripetuti sullo stesso host in container isolati: 18 acquisizioni valide, 16 entro tutte le soglie; esclusi i due casi a 10 Mbit/s indicati nel rapporto.
+- [x] Candidati documentati: `veryfast` 8/9,5 Mbit/s video/TS; alternativa 6/7,5 Mbit/s, −21,1% di banda TS con uno score inferiore.
+- [ ] Estendere al corpus reale e alla macchina obiettivo, con curve qualità/bitrate, revisione percettiva, parametri dello speedcontrol durante il flusso e latenza.
 - Verifica: confronto con il riferimento sullo stesso hardware e stessa pipeline; controllare scene difficili, burst/VBV, ritardo e andamento delle code, oltre allo score medio.
 - Dipendenze: T08; hardware obiettivo e soglie definite in T01. Dimensione: M.
-- File probabili, obe-rt-build: `tests/encoding/sweep`, `tests/encoding/configurations.json`, `profiles/1080i-reference.json`, `docs/encoding-results.md`.
+- File: runner e rapporto T08; `tests/avc-preset.sh`, `obe-rt/tests/avc-preset.c`, `patches/0017-obe-avc-preset.patch`.
 
 ### Checkpoint qualità/compressione
 - [ ] Miglioramento e costo misurati; riferimento, score, visione dei campioni e comportamento in tempo reale sostengono la scelta del preset.

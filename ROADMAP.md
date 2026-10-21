@@ -39,11 +39,17 @@ richiede ancora l'avvio manuale.
 
 - [ ] Corpus riproducibile: studio, movimento, ticker, rumore, cambi scena e pattern temporali.
 - [ ] Riferimento PAL misurato e budget HD di bitrate, latenza e risorse sulla macchina obiettivo.
-- [ ] Benchmark sulla pipeline OBE con ingresso URL e riferimento allineato frame/campi.
-- [ ] PSNR/SSIM e confronto visivo, separando il danno della contribuzione da quello dell'encoding.
-- [ ] Confronto dei preset x264 a più bitrate, includendo GOP, B-frame, lookahead, AQ/psy e VBV.
-- [ ] Rapporto qualità/bitrate con CPU, memoria, code e verifica del funzionamento in tempo reale.
-- [ ] Scelta motivata dei profili PAL e 1080i50; correzioni del motore solo su limiti dimostrati.
+- [x] Benchmark sintetico 1080i50 sulla pipeline OBE con ingresso HTTP e 400 campi allineati per prova.
+- [x] PSNR/SSIM per campo, controlli identità/degradazione e confronto di ritagli; riferimento MPEG-2 decodificato distinto dal generatore.
+- [x] Corretto il preset AVC ignorato senza tuning; test di regressione su 21 combinazioni e patch nella build.
+- [x] Tre preset × quattro bitrate, parametri x264 iniziali effettivi, CPU/RSS/code e CSV; 18 acquisizioni valide con ripetizioni a 6 e 8 Mbit/s.
+- [x] Candidati HD scelti sul pattern: `veryfast` 8 Mbit/s video / 9,5 Mbit/s TS; alternativa 6 / 7,5 Mbit/s, con qualità misurata inferiore.
+- [ ] Revisione in movimento sul corpus reale, parametri adattivi durante il flusso, latenza e collaudo prolungato sulla macchina obiettivo.
+- [ ] Scelta operativa dei profili PAL e 1080i50 sostenuta dai campioni del playout e dai ricevitori reali.
+
+Metodo, risultati e limiti: [benchmark qualità/compressione](docs/encoding-benchmark.md).
+Le soglie preliminari sono superate da 16/18 acquisizioni; i due casi esclusi
+sono `faster` e `medium` a 10 Mbit/s. Nessuna promozione in onda è implicita.
 
 ## P0 — Correttezza video e audio
 
