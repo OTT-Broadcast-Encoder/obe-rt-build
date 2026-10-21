@@ -406,7 +406,7 @@ build_obe() {
     echo "Building OBE for BlackMagic SDK version $BMDSDK_VER"
 
     pushd obe-rt
-        export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_DIR -no-pie"
+        export CFLAGS="-I$PWD/../target-root/usr/local/include -I$BMSDK_DIR -no-pie -D__STDC_CONSTANT_MACROS"
         export CFLAGS="$CFLAGS -I$NDI_SDK/include"
         export LDFLAGS="-L$PWD/../target-root/usr/local/lib -no-pie"
         export LDFLAGS="$LDFLAGS -L$NDI_SDK/lib/x86_64-linux-gnu"
