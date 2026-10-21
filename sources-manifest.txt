@@ -10,8 +10,8 @@ libzvbi	d3a5ee9f2b047bf16cd1ee5ccf6ec05ee75409d0	https://github.com/zapping-vbi/
 zimg	f819b14e8f39d1282400b0d9543e8ef73c1b2bbd	https://github.com/sekrit-twc/zimg.git
 vapoursynth	dd11a9da6f8e2bb24ab4bb084d44bf01fb93612a	https://github.com/vapoursynth/vapoursynth.git
 libklvanc	b409fc2b0b8051c871f89367a3489f8aa2b6ed37	https://github.com/LTNGlobal-opensource/libklvanc.git
-libklscte35	fa1c07ee08a8f692d691950e3a5a61b4494a6c3b	https://github.com/LTNGlobal-opensource/libklscte35.git
-libltntstools	304f32932f4240f6d4b230749d4cd8c16300b374	https://github.com/LTNGlobal-opensource/libltntstools.git
+libklscte35	9df34b200b71485fcd757f9da6b3aeb492e559b6	https://github.com/LTNGlobal-opensource/libklscte35.git
+libltntstools	f6399630de4d29496c94256f1fec727efa10d1df	https://github.com/LTNGlobal-opensource/libltntstools.git
 libmpegts-obe	1ee8519e79280f9cfbcf65af90cc9dc26345527a	https://github.com/LTNGlobal-opensource/libmpegts-obe.git
 vaapi/libva	710eb465c6277ee2cac3e6948767b01eebe7e77a	https://github.com/intel/libva.git
 vaapi/libva-utils	c3ba9e07e61841f1bc2c9932d957b44e5827a852	https://github.com/intel/libva-utils.git

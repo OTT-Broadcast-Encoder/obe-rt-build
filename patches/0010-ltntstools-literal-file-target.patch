@@ -1,5 +1,5 @@
 diff --git a/src/segmentwriter.c b/src/segmentwriter.c
-index e3d14c2..350d12a 100644
+index 786f761..f35e6bf 100644
 --- a/src/segmentwriter.c
 +++ b/src/segmentwriter.c
 @@ -120,10 +120,15 @@ static size_t _write(struct ltntstools_segmentwriter_s *s)
@@ -22,11 +22,160 @@ index e3d14c2..350d12a 100644
  		}
  	} else
  	if (s->writeMode == 1) {
-@@ -360,6 +365,7 @@ ssize_t ltntstools_segmentwriter_write(void *hdl, const uint8_t *buf, size_t len
+@@ -359,10 +364,12 @@ int ltntstools_segmentwriter_object_write(void *hdl, void *object)
+ 	struct ltntstools_segmentwriter_s *s = (struct ltntstools_segmentwriter_s *)hdl;
+ 
+ 	struct q_item_s *qi = (struct q_item_s *)object;
++	/* The writer owns and may free qi as soon as it is queued. */
++	int len = qi->lengthBytes;
+ 	time(&qi->datetime);
+ 	klqueue_push(&s->q, qi);
+ 
+-	return qi->lengthBytes;
++	return len;
+ 
+ #if USE_QUEUE_NOT_RING
+ #else
+@@ -379,12 +386,10 @@ ssize_t ltntstools_segmentwriter_write(void *hdl, const uint8_t *buf, size_t len
  	if (!qi) {
  		return 0;
  	}
-+	len = qi->lengthBytes;
++	/* Capture the result before transferring ownership to the writer. */
++	ssize_t len = qi->lengthBytes;
  	time(&qi->datetime);
  	klqueue_push(&s->q, qi);
+-	/* Number of bytes queued -- this used to be left at 0 (its
+-	 * initializer) in this code path, contradicting the documented
+-	 * "return number of bytes queued" contract. */
+-	ssize_t len = qi->lengthBytes;
  #else
+ 	pthread_mutex_lock(&s->mutex);
+ 	int didOverflow;
+diff --git a/test/.gitignore b/test/.gitignore
+index b624486..4755d8e 100644
+--- a/test/.gitignore
++++ b/test/.gitignore
+@@ -40,6 +40,8 @@ test_smoother_rtp
+ test_smoother_rtp.dSYM
+ test_segmentwriter
+ test_segmentwriter.dSYM
++test_segmentwriter_enqueue
++.build/
+ test_klbitstream_readwriter
+ test_klbitstream_readwriter.dSYM
+ test_tr101290
+diff --git a/test/Makefile b/test/Makefile
+index 2c16951..cfc29f8 100644
+--- a/test/Makefile
++++ b/test/Makefile
+@@ -137,6 +137,15 @@ test_smoother_rtp: test_smoother_rtp.c ../src/smoother-rtp.c ../src/rtp-analyzer
+ test_segmentwriter: test_segmentwriter.c ../src/segmentwriter.c ../src/kl-queue.c ../src/time.c
+ 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_segmentwriter.c ../src/segmentwriter.c ../src/kl-queue.c ../src/time.c -lpthread
+ 
++test_segmentwriter_enqueue: test_segmentwriter_enqueue.c ../src/segmentwriter.c ../src/kl-queue.c ../src/time.c
++	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_segmentwriter_enqueue.c ../src/segmentwriter.c ../src/kl-queue.c ../src/time.c -lpthread -Wl,--wrap=klqueue_push -Wl,--wrap=free
++
++.PHONY: test_segmentwriter_ownership
++# GNU ld wrapping makes the consumer run before enqueue returns on Linux.
++test_segmentwriter_ownership: test_segmentwriter_enqueue
++	./test_segmentwriter_enqueue copy
++	./test_segmentwriter_enqueue object
++
+ test_klbitstream_readwriter: test_klbitstream_readwriter.c ../src/libltntstools/klbitstream_readwriter.h
+ 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_klbitstream_readwriter.c
+ 
+@@ -173,4 +182,5 @@ test_ac3: test_ac3.c ../src/ac3.c
+ 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_ac3.c ../src/ac3.c
+ 
+ clean:
++	rm -f test_segmentwriter_enqueue
+ 	rm -f test_crc32 test_history_metric test_ts test_reframer test_stats test_descriptor test_pes test_pat test_sectionextractor test_ts_packetizer test_throughput_hires test_time test_throughput test_streammodel test_streammodel_extractors test_pes_extractor test_sei_timestamp test_smoother_pcr test_probes test_smoother_rtp test_segmentwriter test_klbitstream_readwriter test_tr101290 test_nal_bitreader test_nal_h264 test_nal_h265 test_udp_receiver test_xorg_list test_vbv test_proc_net_udp test_klringbuffer test_ac3
+diff --git a/test/test_segmentwriter_enqueue.c b/test/test_segmentwriter_enqueue.c
+new file mode 100644
+index 0000000..2907f8f
+--- /dev/null
++++ b/test/test_segmentwriter_enqueue.c
+@@ -0,0 +1,83 @@
++/* Exercise ownership transfer to the real asynchronous file writer. */
++#include <assert.h>
++#include <stdint.h>
++#include <stdatomic.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++
++#include "libltntstools/kl-queue.h"
++#include "libltntstools/segmentwriter.h"
++
++static void *writer;
++static int64_t expected_size;
++static _Atomic(void *) queued_item;
++static atomic_int consumed;
++
++void __real_klqueue_push(struct klqueue_s *queue, void *item);
++void __real_free(void *item);
++
++void __wrap_free(void *item)
++{
++	int is_queued_item = item && item == atomic_load(&queued_item);
++	__real_free(item);
++	if (is_queued_item)
++		atomic_store(&consumed, 1);
++}
++
++/* Let the consumer finish before the producer returns from enqueue. ASan
++ * then detects any access to the object after ownership was transferred. */
++void __wrap_klqueue_push(struct klqueue_s *queue, void *item)
++{
++	atomic_store(&consumed, 0);
++	atomic_store(&queued_item, item);
++	__real_klqueue_push(queue, item);
++	for (int retry = 0; retry < 2000 && !atomic_load(&consumed); retry++)
++		usleep(1000);
++	assert(atomic_load(&consumed));
++	assert(ltntstools_segmentwriter_get_recording_size(writer) == expected_size);
++	atomic_store(&queued_item, NULL);
++}
++
++int main(int argc, char **argv)
++{
++	assert(argc == 2 && (!strcmp(argv[1], "copy") || !strcmp(argv[1], "object")));
++	int object_mode = !strcmp(argv[1], "object");
++	char directory[] = "/tmp/segmentwriter_enqueue_XXXXXX";
++	assert(mkdtemp(directory));
++	char filename[128], actual[128];
++	snprintf(filename, sizeof(filename), "%s/literal.ts", directory);
++	assert(ltntstools_segmentwriter_alloc(&writer, filename, "", SEGMENTEDWRITER_SINGLE_FILE) == 0);
++	for (int block = 0; block < 256; block++) {
++		uint8_t payload[188];
++		memset(payload, block, sizeof(payload));
++		expected_size += sizeof(payload);
++		if (object_mode) {
++			void *object;
++			uint8_t *destination;
++			assert(ltntstools_segmentwriter_object_alloc(writer, sizeof(payload), &object, &destination) == 0);
++			memcpy(destination, payload, sizeof(payload));
++			assert(ltntstools_segmentwriter_object_write(writer, object) == sizeof(payload));
++		} else {
++			assert(ltntstools_segmentwriter_write(writer, payload, sizeof(payload)) == sizeof(payload));
++		}
++	}
++	assert(ltntstools_segmentwriter_get_current_filename(writer, actual, sizeof(actual)) == 0);
++	assert(!strcmp(actual, filename));
++	ltntstools_segmentwriter_free(writer);
++	FILE *file = fopen(filename, "rb");
++	assert(file);
++	for (int block = 0; block < 256; block++) {
++		uint8_t payload[188];
++		assert(fread(payload, 1, sizeof(payload), file) == sizeof(payload));
++		for (size_t i = 0; i < sizeof(payload); i++)
++			assert(payload[i] == block);
++	}
++	assert(fgetc(file) == EOF);
++	fclose(file);
++	unlink(filename);
++	rmdir(directory);
++	printf("PASS: %s enqueue ownership, byte counts and literal file contents\n", argv[1]);
++	return 0;
++}

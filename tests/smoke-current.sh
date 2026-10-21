@@ -10,6 +10,10 @@ export PYTHONPATH="$PYTHON_SITE"
 export LD_LIBRARY_PATH="$PREFIX/lib:$PYTHON_SITE/vapoursynth:$PWD/NDI/sdk/lib/x86_64-linux-gnu"
 mkdir -p tests/.build
 
+cc -g -fsanitize=address,undefined obe-rt/tests/metadata-allocation.c \
+    -o tests/.build/metadata-allocation
+tests/.build/metadata-allocation
+
 cc -O2 -g -Iobe-rt -Iobe-rt/obe $(pkg-config --cflags libavcodec) \
     tests/audio-encoders.c obe-rt/encoders/audio/lavc/lavc.c \
     obe-rt/encoders/audio/mp2/twolame.c obe-rt/encoders/audio/audio_enc_params.c \
@@ -44,6 +48,12 @@ tests/.build/libraries
 cc -O2 $(pkg-config --cflags libltntstools) tests/segmentwriter.c \
     -o tests/.build/segmentwriter $(pkg-config --libs --static libltntstools)
 tests/.build/segmentwriter
+
+make -C libltntstools/test -B test_segmentwriter_enqueue \
+    CFLAGS="-Wall -O1 -g -fsanitize=address -fno-omit-frame-pointer"
+# Upstream writer lifecycle leaks are separate from the enqueue ownership test.
+ASAN_OPTIONS=detect_leaks=0 libltntstools/test/test_segmentwriter_enqueue copy
+ASAN_OPTIONS=detect_leaks=0 libltntstools/test/test_segmentwriter_enqueue object
 
 cc -O2 $(pkg-config --cflags vapoursynth) tests/vsscript.c \
     -o tests/.build/vsscript -L"$PYTHON_SITE/vapoursynth" -lvsscript

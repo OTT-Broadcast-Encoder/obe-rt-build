@@ -48,6 +48,11 @@ int remove_from_queue(obe_queue_t *queue)
     return 0;
 }
 
+int remove_from_queue_without_lock(obe_queue_t *queue)
+{
+    return remove_from_queue(queue);
+}
+
 static void release_audio(void *ptr)
 {
     obe_raw_frame_t *frame = ptr;

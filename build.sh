@@ -8,12 +8,12 @@ FFMPEG_TAG=n9.0.2
 LIBYUV_TAG=47ba8e2160b71a7cf95c0720cd8944ab771e533e
 LIBZVBI_TAG=v0.2.45
 LIBKLVANC_TAG=vid.obe.1.12.0
-LIBKLSCTE35_TAG=vid.obe.1.4.0
+LIBKLSCTE35_TAG=9df34b200b71485fcd757f9da6b3aeb492e559b6
 LIBMPEGTS_TAG=1ee8519e79280f9cfbcf65af90cc9dc26345527a
 X265_TAG=4.2
 X264_TAG=368ad15875cf45478ff59cfae2441b1049dbdc91
 X264_BITDEPTH=8
-LIBLTNTSTOOLS_TAG=v1.38.6
+LIBLTNTSTOOLS_TAG=f6399630de4d29496c94256f1fec727efa10d1df
 VAPOURSYNTH_TAG=R81
 ZIMG_TAG=release-3.0.6
 TWOLAME_TAG=0.4.0
@@ -181,6 +181,7 @@ if [ ! -d obe-rt ]; then
     git -C obe-rt apply ../patches/0008-obe-current-libraries.patch
     git -C obe-rt apply ../patches/0011-obe-network-input.patch
     git -C obe-rt apply ../patches/0012-obe-url-reconnect.patch
+    git -C obe-rt apply ../patches/0013-obe-ltn-safety-fixes.patch
 fi
 
 if [ ! -d x264 ]; then

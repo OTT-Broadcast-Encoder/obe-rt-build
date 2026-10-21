@@ -1,0 +1,424 @@
+diff --git a/common/metadata.c b/common/metadata.c
+index fd65318..2ca11ee 100644
+--- a/common/metadata.c
++++ b/common/metadata.c
+@@ -30,8 +30,10 @@ void avmetadata_clone(struct avmetadata_s *dst, struct avmetadata_s *src)
+ 	avmetadata_reset(dst);
+ 
+ 	for (int i = 0; i < src->count; i++) {
+-		dst->array[i] = avmetadata_item_clone(src->array[i]);
+-		dst->count++;
++		struct avmetadata_item_s *item = avmetadata_item_clone(src->array[i]);
++		if (!item)
++			continue;
++		dst->array[dst->count++] = item;
+ 	}
+ }
+ 
+@@ -49,7 +51,7 @@ int avmetadata_count_by_type(struct avmetadata_s *src, enum avmetadata_item_type
+ 
+ struct avmetadata_item_s *avmetadata_item_alloc(int lengthBytes, enum avmetadata_item_type_e item_type)
+ {
+-	struct avmetadata_item_s *dst = malloc(lengthBytes);
++	struct avmetadata_item_s *dst = malloc(sizeof(*dst));
+ 	if (!dst) {
+ 		printf("%s(%d)\n", __func__, lengthBytes);
+ 		return NULL;
+@@ -75,6 +77,8 @@ struct avmetadata_item_s *avmetadata_item_alloc(int lengthBytes, enum avmetadata
+ struct avmetadata_item_s *avmetadata_item_clone(struct avmetadata_item_s *src)
+ {
+ 	struct avmetadata_item_s *dst = avmetadata_item_alloc(src->dataLengthAlloc, src->item_type);
++	if (!dst)
++		return NULL;
+ 
+ 	switch (src->item_type) {
+ 	case AVMETADATA_SECTION_SCTE35:
+diff --git a/encoders/audio/lavc/lavc.c b/encoders/audio/lavc/lavc.c
+index be0310a..035e8d1 100644
+--- a/encoders/audio/lavc/lavc.c
++++ b/encoders/audio/lavc/lavc.c
+@@ -218,7 +218,12 @@ static int processCodecOutput(struct context_s *ctx, AVPacket *pkt, AVFifo *fifo
+ 
+ static void *aac_start_encoder(void *ptr)
+ {
++    if (!ptr)
++        return NULL;
++
+     struct context_s *ctx = calloc(1, sizeof(*ctx));
++    if (!ctx)
++        return NULL;
+     ctx->enc_params = ptr;
+     ctx->h = ctx->enc_params->h;
+     ctx->encoder = ctx->enc_params->encoder;
+@@ -421,6 +426,11 @@ static void *aac_start_encoder(void *ptr)
+         }
+ 
+         raw_frame = ctx->encoder->queue.queue[0];
++        if (!raw_frame) {
++            remove_from_queue_without_lock(&ctx->encoder->queue);
++            pthread_mutex_unlock(&ctx->encoder->queue.mutex);
++            continue;
++        }
+ #if AUDIO_DEBUG_ENABLE
+         audioFramesDQ++;
+ #endif
+diff --git a/filters/video/video.c b/filters/video/video.c
+index 80cd2c6..3421a37 100644
+--- a/filters/video/video.c
++++ b/filters/video/video.c
+@@ -930,15 +930,14 @@ end:
+         if( vfilt->sws_ctx )
+             sws_freeContext( vfilt->sws_ctx );
+ 
++        if (vfilt->fc_ctx)
++            filter_compress_free(vfilt->fc_ctx);
++
+         free( vfilt );
+     }
+ 
+     free( filter_params );
+ 
+-    if (vfilt->fc_ctx) {
+-        filter_compress_free(vfilt->fc_ctx);
+-    }
+-
+ #if DO_CRYSTAL_FP
+     filter_analyze_fp_free(fp_ctx);
+ #endif
+diff --git a/input/sdi/decklink/decklink.cpp b/input/sdi/decklink/decklink.cpp
+index f184f14..7817ef5 100644
+--- a/input/sdi/decklink/decklink.cpp
++++ b/input/sdi/decklink/decklink.cpp
+@@ -344,6 +344,11 @@ static void endian_flip_array(uint8_t *buf, int bufSize)
+ 
+ static int _vancparse(struct klvanc_context_s *ctx, uint8_t *sec, int byteCount, int lineNr)
+ {
++    if (byteCount < 0 || (byteCount / 2) > LIBKLVANC_PACKET_MAX_PAYLOAD) {
++        fprintf(stderr, "%s() byteCount %d exceeds max payload, rejecting\n", __func__, byteCount);
++        return -1;
++    }
++
+     unsigned short *arr = (unsigned short *)calloc(1, LIBKLVANC_PACKET_MAX_PAYLOAD * sizeof(unsigned short));
+     if (arr == NULL)
+         return -1;
+@@ -1158,8 +1163,8 @@ HRESULT DeckLinkCaptureDelegate::timedVideoInputFrameArrived( IDeckLinkVideoInpu
+     int ret, num_anc_lines = 0, anc_line_stride,
+     lines_read = 0, first_line = 0, last_line = 0, line, num_vbi_lines, vii_line;
+     uint32_t *frame_ptr;
+-    uint16_t *anc_buf, *anc_buf_pos;
+-    uint8_t *vbi_buf;
++    uint16_t *anc_buf = NULL, *anc_buf_pos;
++    uint8_t *vbi_buf = NULL;
+     int anc_lines[DECKLINK_VANC_LINES];
+     IDeckLinkVideoFrameAncillary *ancillary;
+     BMDTimeValue frame_duration;
+@@ -1626,8 +1631,10 @@ HRESULT DeckLinkCaptureDelegate::timedVideoInputFrameArrived( IDeckLinkVideoInpu
+         }
+ 
+         if (g_decklink_udp_vanc_receiver_port && vr->active) {
+-            /* Receive any pending message */
+-            ssize_t len = recv(vr->skt, vr->buf, vr->bufmaxlen, 0);
++            /* Receive any pending message. Reserve 8 bytes of headroom in the
++             * buffer for the padding written below, so a full-size datagram
++             * can never cause the pad loop to write past the end of vr->buf. */
++            ssize_t len = recv(vr->skt, vr->buf, vr->bufmaxlen - 8, 0);
+             if (len > 0) {
+                 /* Padd the end of the message  */
+                 for (int i = len; i < len + 8; i+= 2) {
+@@ -1832,7 +1839,7 @@ HRESULT DeckLinkCaptureDelegate::timedVideoInputFrameArrived( IDeckLinkVideoInpu
+             if( !vbi_buf )
+             {
+                 syslog( LOG_ERR, "Malloc failed\n" );
+-                goto end;
++                goto fail;
+             }
+ 
+             /* Scale the lines from 10-bit to 8-bit */
+@@ -1870,10 +1877,10 @@ HRESULT DeckLinkCaptureDelegate::timedVideoInputFrameArrived( IDeckLinkVideoInpu
+             if( decode_vbi( h, &decklink_ctx->non_display_parser, vbi_buf, raw_frame ) < 0 )
+                 goto fail;
+ 
+-            av_free( vbi_buf );
++            av_freep( &vbi_buf );
+         }
+ 
+-        av_free( anc_buf );
++        av_freep( &anc_buf );
+ 
+         if( !decklink_opts_->probe )
+         {
+@@ -1882,7 +1889,7 @@ HRESULT DeckLinkCaptureDelegate::timedVideoInputFrameArrived( IDeckLinkVideoInpu
+             if( !frame )
+             {
+                 syslog( LOG_ERR, "[decklink]: Could not allocate video frame\n" );
+-                goto end;
++                goto fail;
+             }
+             decklink_ctx->codec->width = width;
+             decklink_ctx->codec->height = height;
+@@ -1896,13 +1903,15 @@ HRESULT DeckLinkCaptureDelegate::timedVideoInputFrameArrived( IDeckLinkVideoInpu
+ //
+ 
+             ret = avcodec_send_packet(decklink_ctx->codec, &pkt);
+-            while (ret >= 0) {
++            if (ret >= 0)
+                 ret = avcodec_receive_frame(decklink_ctx->codec, frame);
+-                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+-                    return -1;
+-                else if (ret < 0) {
+-                }
+-                break;
++            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
++                goto fail;
++            }
++            if (ret < 0) {
++                syslog( LOG_ERR, "[decklink]: Video decode failed (%d), dropping frame\n", ret );
++                av_frame_free( &frame );
++                goto fail;
+             }
+ 
+             raw_frame->release_data = obe_release_video_data;
+@@ -1984,10 +1993,12 @@ HRESULT DeckLinkCaptureDelegate::timedVideoInputFrameArrived( IDeckLinkVideoInpu
+             /* Ensure we put any associated video vanc / metadata into this raw frame. */
+             avmetadata_clone(&raw_frame->metadata, &decklink_ctx->metadataVANC);
+ 
++            int64_t video_pts = raw_frame->pts;
+             if( add_to_filter_queue( h, raw_frame ) < 0 )
+                 goto fail;
++            raw_frame = NULL; /* The filter now owns the frame. */
+ 
+-            if( send_vbi_and_ttx( h, &decklink_ctx->non_display_parser, raw_frame->pts ) < 0 )
++            if( send_vbi_and_ttx( h, &decklink_ctx->non_display_parser, video_pts ) < 0 )
+                 goto fail;
+ 
+             decklink_ctx->non_display_parser.num_vbi = 0;
+@@ -2033,6 +2044,9 @@ HRESULT DeckLinkCaptureDelegate::timedVideoInputFrameArrived( IDeckLinkVideoInpu
+     }
+ 
+ end:
++    av_freep( &anc_buf );
++    av_freep( &vbi_buf );
++
+     if( frame )
+         av_frame_free( &frame );
+ 
+@@ -2045,33 +2059,47 @@ fail:
+ 
+     if( raw_frame )
+     {
+-        if (raw_frame->release_data)
+-            raw_frame->release_data( raw_frame );
+-        if (raw_frame->release_frame)
+-            raw_frame->release_frame( raw_frame );
++        obe_release_video_data( raw_frame );
++        obe_release_frame( raw_frame );
+     }
+ 
+-    return S_OK;
++    goto end;
+ }
+ 
+ static void close_card( decklink_opts_t *decklink_opts )
+ {
+     decklink_ctx_t *decklink_ctx = &decklink_opts->decklink_ctx;
+ 
++    /* Null out each resource after releasing/freeing it so that a second
++     * call to close_card() on the same decklink_opts_t (e.g. once from
++     * open_card()'s own failure path and again via the pthread cleanup
++     * handler in open_input()) is a harmless no-op instead of a
++     * double-free/use-after-free. */
++
+     if( decklink_ctx->p_config )
++    {
+         decklink_ctx->p_config->Release();
++        decklink_ctx->p_config = NULL;
++    }
+ 
+     if( decklink_ctx->p_input )
+     {
+         decklink_ctx->p_input->StopStreams();
+         decklink_ctx->p_input->Release();
++        decklink_ctx->p_input = NULL;
+     }
+ 
+     if( decklink_ctx->p_card )
++    {
+         decklink_ctx->p_card->Release();
++        decklink_ctx->p_card = NULL;
++    }
+ 
+     if( decklink_ctx->p_delegate )
++    {
+         decklink_ctx->p_delegate->Release();
++        decklink_ctx->p_delegate = NULL;
++    }
+ 
+     if( decklink_ctx->codec )
+     {
+@@ -2096,8 +2124,11 @@ static void close_card( decklink_opts_t *decklink_opts )
+         }
+     }
+ 
+-    if( IS_SD( decklink_opts->video_format ) )
++    if( decklink_ctx->has_setup_vbi )
++    {
+         vbi_raw_decoder_destroy( &decklink_ctx->non_display_parser.vbi_decoder );
++        decklink_ctx->has_setup_vbi = 0;
++    }
+ 
+     if (decklink_ctx->avr)
+         swr_free(&decklink_ctx->avr);
+@@ -2130,7 +2161,7 @@ static int cb_EIA_608(void *callback_context, struct klvanc_context_s *ctx, stru
+ /* For a given SCTE35 stream 0..N, find it */
+ static int findOutputStreamIdByFormat(decklink_ctx_t *decklink_ctx, enum stream_type_e stype, enum stream_formats_e fmt, int instancenr)
+ {
+-	if (decklink_ctx && decklink_ctx->device == NULL)
++	if (!decklink_ctx || decklink_ctx->device == NULL)
+ 		return -1;
+ 
+     int instance = 0;
+@@ -2478,8 +2509,9 @@ static int cb_SDP(void *callback_context, struct klvanc_context_s *ctx, struct k
+         bs_write(&bs,  4, 2);         /* '0010' fixed value */
+ 
+         int64_t pts = decklink_ctx->stream_time / 300 + (10 * 90000);
++        pts &= 0x1ffffffffL; /* preserve only 33bits */
+ 
+-        bs_write(&bs,  3, (pts >> 30));           /* PTS[32:30] */
++        bs_write(&bs,  3, (pts >> 30) & 0x7);     /* PTS[32:30] */
+         bs_write(&bs,  1, 1);                     /* marker_bit */
+         bs_write(&bs, 15, (pts >> 15) & 0x7fff);  /* PTS[29:15] */
+         bs_write(&bs,  1, 1);                     /* marker_bit */
+@@ -2714,6 +2746,7 @@ static int open_card( decklink_opts_t *decklink_opts, int allowFormatDetection)
+     if( !decklink_ctx->dec )
+     {
+         fprintf( stderr, "[decklink] Could not find v210 decoder\n" );
++        ret = -1;
+         goto finish;
+     }
+ 
+@@ -2721,6 +2754,7 @@ static int open_card( decklink_opts_t *decklink_opts, int allowFormatDetection)
+     if( !decklink_ctx->codec )
+     {
+         fprintf( stderr, "[decklink] Could not allocate AVCodecContext\n" );
++        ret = -1;
+         goto finish;
+     }
+ 
+@@ -2735,6 +2769,7 @@ static int open_card( decklink_opts_t *decklink_opts, int allowFormatDetection)
+     if( avcodec_open2( decklink_ctx->codec, decklink_ctx->dec, NULL ) < 0 )
+     {
+         fprintf( stderr, "[decklink] Could not open libavcodec\n" );
++        ret = -1;
+         goto finish;
+     }
+ 
+@@ -3008,6 +3043,7 @@ static int open_card( decklink_opts_t *decklink_opts, int allowFormatDetection)
+         if (swr_init(decklink_ctx->avr) < 0)
+         {
+             fprintf(stderr, PREFIX "couldn't setup sample rate conversion\n");
++            ret = -1;
+             goto finish;
+         }
+     }
+@@ -3060,7 +3096,7 @@ static void *probe_stream( void *ptr )
+     obe_t *h = probe_ctx->h;
+     obe_input_t *user_opts = &probe_ctx->user_opts;
+     obe_device_t *device;
+-    obe_int_input_stream_t *streams[MAX_STREAMS];
++    obe_int_input_stream_t *streams[MAX_STREAMS] = {0};
+     int cur_stream = 0;
+     obe_sdi_non_display_data_t *non_display_parser;
+     decklink_ctx_t *decklink_ctx;
+@@ -3130,6 +3166,10 @@ static void *probe_stream( void *ptr )
+         user_opts->video_format, getModeName(fmt->bmd_name));
+ 
+ #define ALLOC_STREAM(nr) \
++    if (cur_stream >= MAX_STREAMS) { \
++        fprintf(stderr, "[decklink] Too many input streams configured (max %d), aborting probe\n", MAX_STREAMS); \
++        goto finish; \
++    } \
+     streams[cur_stream] = (obe_int_input_stream_t*)calloc(1, sizeof(*streams[cur_stream])); \
+     if (!streams[cur_stream]) goto finish;
+ 
+@@ -3304,12 +3344,16 @@ static void *probe_stream( void *ptr )
+     device->device_type = INPUT_DEVICE_DECKLINK;
+     memcpy( &device->user_opts, user_opts, sizeof(*user_opts) );
+ 
+-    /* Upstream is responsible for freeing streams[x] allocations */
++    /* Ownership passes to the device, including stream allocations. */
++    memset(streams, 0, sizeof(streams));
+ 
+     /* add device */
+     add_device( h, device );
+ 
+ finish:
++    for( int i = 0; i < MAX_STREAMS; i++ )
++        free( streams[i] );
++
+     if( decklink_opts )
+         free( decklink_opts );
+ 
+diff --git a/tests/metadata-allocation.c b/tests/metadata-allocation.c
+new file mode 100644
+index 0000000..ef08925
+--- /dev/null
++++ b/tests/metadata-allocation.c
+@@ -0,0 +1,58 @@
++/* Build and run with AddressSanitizer; no SDK or encoder dependencies required.
++ * cc -g -fsanitize=address,undefined tests/metadata-allocation.c -o /tmp/metadata-allocation
++ */
++#include <assert.h>
++#include <stdlib.h>
++#include <string.h>
++
++static int fail_after = -1;
++
++static void *test_malloc(size_t size)
++{
++    if (fail_after == 0) {
++        fail_after = -1;
++        return NULL;
++    }
++    if (fail_after > 0)
++        fail_after--;
++    return malloc(size);
++}
++
++#define malloc test_malloc
++#include "../common/metadata.c"
++#undef malloc
++
++int main(void)
++{
++    struct avmetadata_item_s *small = avmetadata_item_alloc(1, AVMETADATA_SECTION_SCTE35);
++    assert(small);
++    small->data[0] = 0xfc;
++    small->dataLengthBytes = 1;
++    small->lineNr = 10;
++    small->outputStreamId = 3;
++    struct avmetadata_item_s *copy = avmetadata_item_clone(small);
++    assert(copy && copy != small && copy->data != small->data);
++    assert(copy->data[0] == 0xfc && copy->dataLengthBytes == 1);
++    assert(copy->lineNr == 10 && copy->outputStreamId == 3);
++    avmetadata_item_free(copy);
++
++    for (int allocation = 0; allocation < 2; allocation++) {
++        fail_after = allocation;
++        assert(avmetadata_item_clone(small) == NULL);
++    }
++
++    struct avmetadata_s src, dst;
++    avmetadata_init(&src);
++    avmetadata_init(&dst);
++    src.array[src.count++] = small;
++    src.array[src.count++] = avmetadata_item_clone(small);
++    assert(src.array[1]);
++    fail_after = 0;
++    avmetadata_clone(&dst, &src);
++    assert(dst.count == 1 && dst.array[0] && dst.array[0]->data[0] == 0xfc);
++    assert(avmetadata_count_by_type(&dst, AVMETADATA_SECTION_SCTE35) == 1);
++    avmetadata_reset(&dst);
++    avmetadata_reset(&src);
++    assert(src.count == 0 && dst.count == 0);
++    return 0;
++}
