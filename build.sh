@@ -178,6 +178,7 @@ if [ ! -d ffmpeg ]; then
 
     pushd ffmpeg
         git checkout $FFMPEG_TAG
+        patch -p1 <../patches/0006-ffmpeg-binutils-shifts.patch
     popd
 fi
 
