@@ -6,14 +6,17 @@ import os
 from pathlib import Path
 import re
 import runpy
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'webpanel'))
 FAKE = '''#!/usr/bin/env python3
 import json, os, sys, threading, time
 from pathlib import Path
@@ -25,13 +28,17 @@ def events():
             previous = marker
             if marker == 'reconnect': print('obecli> ....URL input: retrying in 1 seconds (attempt 1)', flush=True)
             if marker == 'recovered': print('obecli> ....URL input: reconnected; receiving video and stereo audio', flush=True)
+            if marker == 'format-change': print('URL input: stopped (format changed)', flush=True)
         time.sleep(0.05)
 threading.Thread(target=events, daemon=True).start()
 print('Version 4.1.4 (panel-test)', flush=True)
 frames = 0
+is_srt = False
 for line in sys.stdin:
     command = line.strip()
-    if command == 'probe input':
+    if command.startswith('set input opts location='):
+        is_srt = 'location=srt://' in command
+    elif command == 'probe input':
         behavior = Path('behavior').read_text() if Path('behavior').exists() else ''
         if behavior == 'silent': continue
         if behavior == 'exit': sys.exit(3)
@@ -53,6 +60,13 @@ for line in sys.stdin:
             'schema': 1, 'monotonic_ns': time.monotonic_ns(), 'video_frames': frames,
             'video_bytes': frames * 40000, 'output_bytes': frames * 50000,
             'output_datagrams': frames * 38, 'output_errors': 0, 'video_queue_frames': 2}), flush=True)
+        if is_srt:
+            print('OBE_SRT ' + json.dumps({'schema': 1, 'connection': 1, 'stats': {
+                'sample_us': time.monotonic_ns() // 1000, 'rtt_us': 25000,
+                'received_packets': frames * 10, 'received_bytes': frames * 13160,
+                'lost_packets': 3, 'retransmitted_packets': 3, 'dropped_packets': 0,
+                'buffer_bytes': 50000, 'buffer_ms': 100, 'buffer_available_bytes': 100000,
+                'latency_ms': 200}}), flush=True)
     elif command == 'quit':
         Path('quit-received').write_text('yes')
         break
@@ -121,6 +135,24 @@ class PanelTests(unittest.TestCase):
         state = self.state()
         config = dict(state['config'], **changes)
         return self.request('PUT', '/api/config', {'revision': state['revision'], 'config': config})
+
+    def start_encoder(self, **options):
+        status, result = self.request('POST', '/api/start', dict(revision=self.state()['revision'], **options))
+        self.assertEqual(status, 202, result)
+        state = self.wait_phase({'running', 'error'})
+        self.assertEqual(state['phase'], 'running', state)
+        return state
+
+    def crash(self, state):
+        # Only the fake child belonging to this test's isolated server.
+        os.kill(state['pid'], signal.SIGKILL)
+        deadline = time.monotonic() + 4
+        while time.monotonic() < deadline:
+            result = self.state()
+            if not result['process_alive'] and result['recovery']['last_exit']:
+                return result
+            time.sleep(.02)
+        self.fail('The fake child did not exit')
 
     def test_idle_and_revision_persistence(self):
         state = self.state()
@@ -199,8 +231,48 @@ class PanelTests(unittest.TestCase):
         self.assertNotIn(key, json.dumps(self.state()))
         for path in (self.root/'state').rglob('*'):
             if path.is_file():
-                self.assertNotIn(key, path.read_text())
+                self.assertNotIn(key.encode(), path.read_bytes())
         self.assertTrue(self.state()['encrypted'])
+
+    def test_srt_history_export_and_persistence_without_browser_polling(self):
+        self.assertEqual(self.save(name='=SUM(1,2)', input_url='srt://127.0.0.1:12000?mode=caller')[0], 200)
+        key = 'test-history-ephemeral-key'
+        self.request('POST', '/api/start', {'revision': self.state()['revision'], 'passphrase': key})
+        self.wait_phase({'running'})
+        before = self.request(path='/api/history')[1]['total_samples']
+        time.sleep(3.2)  # No HTTP requests: the service must collect by itself.
+        state = self.state()
+        self.assertEqual(state['srt']['status'], 'live')
+        self.assertEqual(state['srt']['rtt_ms'], 25)
+        self.assertEqual(state['monitoring']['status'], 'live')
+        self.assertFalse(state['monitoring']['active_alarms'])
+        status, history = self.request(path='/api/history?limit=1800&format=json')
+        self.assertEqual(status, 200)
+        self.assertGreaterEqual(history['total_samples'], before + 2)
+        self.assertTrue(any(s['srt']['status'] == 'live' for s in history['samples']))
+        self.assertTrue(all('input_url' not in s['context'] and 'output_url' not in s['context'] for s in history['samples']))
+        self.assertNotIn(key, json.dumps(history))
+        csv_status, csv_body = self.request(path='/api/history?format=csv&limit=1800')
+        self.assertEqual(csv_status, 200)
+        self.assertIn(b"'=SUM(1,2)", csv_body)
+        self.assertNotIn(key.encode(), csv_body)
+        self.assertFalse(any('OBE_SRT ' in e['message'] for e in state['events']))
+        self.request('POST', '/api/stop', {})
+        self.stop_server()
+        self.start_server()
+        self.assertEqual(self.state()['phase'], 'idle')
+        restored = self.request(path='/api/history?limit=1800')[1]
+        self.assertGreaterEqual(restored['total_samples'], history['total_samples'])
+        for path in (self.root/'state').rglob('*'):
+            if path.is_file():
+                self.assertNotIn(key.encode(), path.read_bytes())
+
+    def test_history_validation_and_origin(self):
+        for query in ('limit=0', 'limit=1801', 'limit=-1', 'limit=a', 'limit=1&limit=2',
+                      'format=html', 'unknown=1', 'format=csv&limit=1&extra=2'):
+            self.assertEqual(self.request(path='/api/history?' + query)[0], 422)
+        self.assertEqual(self.request(path='/api/history', headers={'Host': 'evil.example'})[0], 403)
+        self.assertEqual(self.request(path='/api/history', headers={'Origin': 'http://evil.example'})[0], 403)
 
     def test_child_exit_is_error_not_success(self):
         (self.root/'behavior').write_text('exit')
@@ -212,11 +284,14 @@ class PanelTests(unittest.TestCase):
 
     def test_missing_start_confirmation_is_an_error(self):
         (self.root/'behavior').write_text('no-start')
-        status, _ = self.request('POST', '/api/start', {'revision': self.state()['revision']})
+        status, _ = self.request('POST', '/api/start', {'revision': self.state()['revision'], 'auto_restart': True})
         self.assertEqual(status, 202)
         state = self.wait_phase({'error'}, seconds=24)
         self.assertFalse(state['encoding_started'])
         self.assertFalse(state['process_alive'])
+        self.assertFalse(state['recovery']['active'])
+        self.assertEqual(state['recovery']['attempts'], 0)
+        self.assertEqual(state['recovery']['last_exit']['reason'], 'start_timeout')
 
     def test_stop_during_probe_and_server_shutdown(self):
         (self.root/'behavior').write_text('silent')
@@ -276,6 +351,279 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(state['telemetry']['status'], 'unavailable')
         self.assertTrue(state['encoding_started'])
         self.assertIsNone(state['telemetry']['output_bitrate_kbps'])
+
+    def test_crash_recovery_is_disabled_by_default(self):
+        running = self.start_encoder()
+        crashed = self.crash(running)
+        self.assertEqual(crashed['phase'], 'error')
+        recovery = crashed['recovery']
+        self.assertFalse(recovery['enabled'])
+        self.assertFalse(recovery['active'])
+        self.assertEqual(recovery['attempts'], 0)
+        exit_info = recovery['last_exit']
+        self.assertEqual((exit_info['pid'], exit_info['returncode'], exit_info['signal']),
+                         (running['pid'], -9, 'SIGKILL'))
+        self.assertEqual(exit_info['reason'], 'process_signal')
+        self.assertFalse(exit_info['expected'])
+        time.sleep(2.2)
+        self.assertEqual(self.state()['phase'], 'error')
+        self.assertFalse(self.state()['process_alive'])
+
+    def test_recovery_budget_config_and_ephemeral_key(self):
+        self.assertEqual(self.save(input_url='srt://127.0.0.1:12000?mode=caller', name='Recovery test')[0], 200)
+        key = 'ephemeral-recovery-test-key'
+        running = self.start_encoder(auto_restart=True, passphrase=key)
+        original = running['config']
+        original_revision = running['revision']
+        (self.root/'event').write_text('reconnect')
+        reconnecting = self.wait_phase({'reconnecting'})
+        self.assertEqual(reconnecting['pid'], running['pid'])
+        self.assertEqual(reconnecting['recovery']['attempts'], 0)
+        (self.root/'event').write_text('recovered')
+        self.wait_phase({'running'})
+        pids = set()
+        for attempt, delay in enumerate((2, 4, 8, None)):
+            pids.add(running['pid'])
+            self.assertEqual(running['recovery']['attempts'], attempt)
+            self.assertEqual(running['config'], original)
+            self.assertEqual(running['revision'], original_revision)
+            self.assertTrue(running['encrypted'])
+            # Each new fake child confirms it received the key; only redaction reaches the API.
+            time.sleep(.1)
+            state = self.state()
+            self.assertEqual(sum('[chiave rimossa]' in e['message'] for e in state['events']), attempt + 1)
+            self.assertNotIn(key, json.dumps(state))
+            started = time.monotonic()
+            crashed = self.crash(running)
+            if delay is None:
+                self.assertEqual(crashed['phase'], 'error')
+                self.assertTrue(crashed['recovery']['exhausted'])
+                self.assertFalse(crashed['recovery']['active'])
+                self.assertIsNone(crashed['recovery']['next_retry_seconds'])
+                break
+            self.assertEqual(crashed['phase'], 'restart_wait')
+            self.assertFalse(crashed['process_alive'])
+            self.assertEqual(crashed['telemetry']['status'], 'idle')
+            self.assertLessEqual(crashed['recovery']['next_retry_seconds'], delay)
+            for action in ('probe', 'start'):
+                self.assertEqual(self.request('POST', '/api/'+action, {'revision': original_revision})[0], 409)
+            self.assertEqual(self.save(name='Blocked during recovery')[0], 409)
+            running = self.wait_phase({'running', 'error'}, seconds=delay+4)
+            self.assertEqual(running['phase'], 'running')
+            self.assertGreaterEqual(time.monotonic()-started, delay-.1)
+        self.assertEqual(len(pids), 4)
+        self.assertEqual([e['restart_attempt'] for e in crashed['recovery']['history']], [0, 1, 2, 3])
+        self.assertNotIn(key, (self.root/'state/config.json').read_text())
+        # A manual start resets the budget and does not inherit the old key/policy.
+        fresh = self.start_encoder()
+        self.assertEqual(fresh['recovery']['attempts'], 0)
+        self.assertFalse(fresh['recovery']['enabled'])
+        self.assertFalse(fresh['encrypted'])
+
+    def test_stop_cancels_backoff_before_new_session(self):
+        self.assertEqual(self.crash(self.start_encoder(auto_restart=True))['phase'], 'restart_wait')
+        self.request('POST', '/api/stop', {})
+        stopped = self.state()
+        self.assertEqual(stopped['phase'], 'idle')
+        self.assertFalse(stopped['recovery']['active'])
+        self.assertIsNone(stopped['recovery']['next_retry_seconds'])
+        fresh = self.start_encoder()
+        time.sleep(2.2)
+        self.assertEqual(self.state()['pid'], fresh['pid'])
+        self.assertEqual(self.state()['recovery']['attempts'], 0)
+        self.request('POST', '/api/stop', {})
+        exit_info = self.state()['recovery']['last_exit']
+        self.assertEqual(exit_info['reason'], 'operator_stop')
+        self.assertTrue(exit_info['expected'])
+        self.assertEqual(exit_info['returncode'], 0)
+
+    def test_shutdown_during_backoff_never_autostarts(self):
+        self.assertEqual(self.crash(self.start_encoder(auto_restart=True))['phase'], 'restart_wait')
+        self.stop_server()
+        self.start_server()
+        time.sleep(2.2)
+        state = self.state()
+        self.assertEqual(state['phase'], 'idle')
+        self.assertFalse(state['process_alive'])
+        self.assertFalse(state['recovery']['enabled'])
+        self.assertEqual(state['recovery']['history'], [])
+
+    def test_recovery_validation_and_initial_failure(self):
+        revision = self.state()['revision']
+        for value in (1, 'true', None, [], {}):
+            self.assertEqual(self.request('POST', '/api/start', {'revision': revision, 'auto_restart': value})[0], 422)
+        self.assertEqual(self.request('POST', '/api/probe', {'revision': revision, 'auto_restart': True})[0], 422)
+        (self.root/'behavior').write_text('exit')
+        self.assertEqual(self.request('POST', '/api/start', {'revision': revision, 'auto_restart': True})[0], 202)
+        state = self.wait_phase({'error'})
+        self.assertFalse(state['recovery']['active'])
+        self.assertEqual(state['recovery']['attempts'], 0)
+        self.assertEqual(state['recovery']['last_exit']['returncode'], 3)
+        self.assertEqual(state['recovery']['last_exit']['reason'], 'process_exit')
+
+    def test_format_change_disarms_recovery(self):
+        running = self.start_encoder(auto_restart=True)
+        (self.root/'event').write_text('format-change')
+        state = self.wait_phase({'error'})
+        self.assertFalse(state['recovery']['active'])
+        self.crash(running)
+        self.assertEqual(self.state()['recovery']['last_exit']['reason'], 'unsupported_input')
+        self.assertIsNone(self.state()['recovery']['next_retry_seconds'])
+
+    def test_bounded_diagnostics_and_failed_spawn(self):
+        revision = self.state()['revision']
+        for _ in range(11):
+            self.assertEqual(self.request('POST', '/api/probe', {'revision': revision})[0], 202)
+            self.wait_phase({'idle'})
+        history = self.state()['recovery']['history']
+        self.assertEqual(len(history), 10)
+        self.assertTrue(all(e['action'] == 'probe' and e['reason'] == 'probe_complete'
+                            and e['expected'] and e['returncode'] == 0 for e in history))
+        (self.root/'run.sh').chmod(0o600)
+        self.assertEqual(self.request('POST', '/api/probe', {'revision': revision})[0], 500)
+        state = self.state()
+        self.assertEqual(state['phase'], 'error')
+        exit_info = state['recovery']['last_exit']
+        self.assertEqual(exit_info['reason'], 'encoder_unavailable')
+        self.assertEqual(exit_info['action'], 'probe')
+        self.assertIsNone(exit_info['pid'])
+        self.assertEqual(len(state['recovery']['history']), 10)
+
+
+class RecoveryRaceTests(unittest.TestCase):
+    def setUp(self):
+        self.module = runpy.run_path(str(ROOT/'webpanel/server.py'))
+        self.temp = tempfile.TemporaryDirectory(prefix='obe-recovery-test-')
+        self.root = Path(self.temp.name)
+        (self.root/'run.sh').write_text(FAKE)
+        (self.root/'run.sh').chmod(0o700)
+        self.panel = self.module['Panel'](self.root, self.root/'state')
+
+    def tearDown(self):
+        self.panel.close()
+        self.temp.cleanup()
+
+    def wait(self, phase, seconds=4):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            state = self.panel.state()
+            if state['phase'] == phase:
+                return state
+            time.sleep(.01)
+        self.fail(f'Expected {phase}, got {state}')
+
+    def start(self):
+        self.panel.action('start', {'revision': self.panel.revision, 'auto_restart': True})
+        return self.wait('running')
+
+    def test_stop_serializes_with_retry_spawn(self):
+        running = self.start()
+        os.kill(running['pid'], signal.SIGKILL)
+        self.wait('restart_wait')
+        session = self.panel.session
+        spawning, release, stopping = threading.Event(), threading.Event(), threading.Event()
+        launch = self.panel._launch
+
+        def delayed_launch(*args):
+            spawning.set()
+            if not release.wait(3):
+                raise AssertionError('Timed out releasing retry')
+            return launch(*args)
+
+        def stop():
+            stopping.set()
+            self.panel.stop()
+
+        with mock.patch.object(self.panel, '_launch', side_effect=delayed_launch):
+            retry = threading.Thread(target=self.panel._restart, args=(session, 0))
+            retry.start()
+            try:
+                self.assertTrue(spawning.wait(2))
+                stopper = threading.Thread(target=stop)
+                stopper.start()
+                self.assertTrue(stopping.wait(2))
+            finally:
+                release.set()
+                retry.join(4)
+            stopper.join(4)
+            self.assertFalse(retry.is_alive())
+            self.assertFalse(stopper.is_alive())
+        self.assertEqual(self.panel.state()['phase'], 'idle')
+        self.assertFalse(self.panel.state()['process_alive'])
+        self.assertFalse(session.active)
+        with mock.patch.object(self.panel, '_launch') as spawn:
+            self.panel._restart(session, 0)
+            spawn.assert_not_called()
+
+    def test_late_completion_cannot_override_stop_or_next_run(self):
+        for next_run in (False, True):
+            with self.subTest(next_run=next_run):
+                self.start()
+                old = self.panel.run
+                terminated, release = threading.Event(), threading.Event()
+                terminate = self.panel._terminate
+
+                def delayed_terminate(run):
+                    terminate(run)
+                    terminated.set()
+                    release.wait(3)
+
+                with mock.patch.object(self.panel, '_terminate', side_effect=delayed_terminate):
+                    completion = threading.Thread(target=self.panel._fail, args=(old, 'Old failure', 'probe_timeout'))
+                    completion.start()
+                    try:
+                        self.assertTrue(terminated.wait(2))
+                        self.assertTrue(old.exited.is_set())
+                        self.panel.stop()
+                        if next_run:
+                            fresh = self.start()
+                    finally:
+                        release.set()
+                        completion.join(4)
+                    self.assertFalse(completion.is_alive())
+                state = self.panel.state()
+                self.assertEqual(state['phase'], 'running' if next_run else 'idle')
+                if next_run:
+                    self.panel._line(old, 'URL input: stopped (old process)')
+                    self.panel._fail(old, 'Late failure')
+                    self.assertEqual(self.panel.state()['pid'], fresh['pid'])
+                    self.assertEqual(self.panel.state()['phase'], 'running')
+                self.panel.stop()
+
+    def test_retry_probe_exit_and_spawn_failure_are_bounded(self):
+        running = self.start()
+        (self.root/'behavior').write_text('exit')
+        os.kill(running['pid'], signal.SIGKILL)
+        self.wait('restart_wait')
+        retry = self.wait('probing')
+        self.assertEqual(retry['recovery']['attempts'], 1)
+        self.wait('restart_wait')
+        # Remaining retries cannot spawn after the launcher loses execute permission.
+        (self.root/'run.sh').chmod(0o600)
+        state = self.wait('error', seconds=14)
+        self.assertTrue(state['recovery']['exhausted'])
+        self.assertEqual(state['recovery']['attempts'], 3)
+        self.assertEqual([e['reason'] for e in state['recovery']['history']],
+                         ['process_signal', 'process_exit', 'encoder_unavailable', 'encoder_unavailable'])
+        self.assertEqual(self.panel.session.secret, '')
+
+    def test_retry_probe_timeout_is_terminal_and_clears_key(self):
+        self.panel.config['input_url'] = 'srt://127.0.0.1:12000?mode=caller'
+        self.panel.action('start', {'revision': self.panel.revision, 'auto_restart': True,
+                                    'passphrase': 'ephemeral-timeout-test-key'})
+        running = self.wait('running')
+        (self.root/'behavior').write_text('silent')
+        os.kill(running['pid'], signal.SIGKILL)
+        self.wait('restart_wait')
+        # Exercise the timeout path without waiting 20 seconds in a second test.
+        with mock.patch.object(self.panel, '_await', return_value=False):
+            state = self.wait('error', seconds=4)
+        self.assertEqual(state['recovery']['last_exit']['reason'], 'probe_timeout')
+        self.assertFalse(state['recovery']['active'])
+        self.assertFalse(state['recovery']['exhausted'])
+        self.assertEqual(state['recovery']['attempts'], 1)
+        self.assertEqual(self.panel.session.secret, '')
+        self.assertEqual(self.panel.run.secret, '')
 
 
 class TelemetryTests(unittest.TestCase):
@@ -344,6 +692,18 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(self.panel.state()['telemetry']['video_frames'], 100)
         self.panel._line(self.run, 'error detail video_frames')
         self.assertNotIn('video_frames', json.dumps(list(self.panel.events)))
+
+    def test_srt_machine_line_secret_collision_and_invalid_payload_not_logged(self):
+        sample = runpy.run_path(str(ROOT / 'tests/webpanel-monitoring.py'))['srt_sample']
+        self.panel.config['input_url'] = 'srt://127.0.0.1:12000'
+        self.run.secret = 'received_packets'
+        self.panel._line(self.run, 'OBE_SRT ' + json.dumps(sample()))
+        self.assertEqual(self.panel.state()['srt']['status'], 'live')
+        self.assertEqual(self.panel.state()['srt']['received_packets'], 100)
+        for _ in range(3):
+            self.panel._line(self.run, 'OBE_SRT ' + json.dumps(sample(received_packets='secret-value')))
+        self.assertNotIn('secret-value', json.dumps(list(self.panel.events)))
+        self.assertEqual(sum(e['level'] == 'warning' for e in self.panel.events), 1)
 
 
 if __name__ == '__main__':

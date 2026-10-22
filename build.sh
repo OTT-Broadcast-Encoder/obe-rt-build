@@ -202,6 +202,7 @@ if [ ! -d ffmpeg ]; then
         git checkout $FFMPEG_TAG
         git apply ../patches/0009-ffmpeg-obe-x264.patch
         git apply ../patches/0014-ffmpeg-srt-secret-log.patch
+        git apply ../patches/0016-ffmpeg-srt-statistics.patch
     popd
 fi
 

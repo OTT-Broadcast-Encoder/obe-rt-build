@@ -1,0 +1,77 @@
+diff --git a/libavformat/libsrt.c b/libavformat/libsrt.c
+index c1d93b2550..ccb5ecb15e 100644
+--- a/libavformat/libsrt.c
++++ b/libavformat/libsrt.c
+@@ -22,11 +22,14 @@
+  */
+ 
+ #include <srt/srt.h>
++#include <inttypes.h>
++#include <math.h>
+ 
+ #include "libavutil/mem.h"
+ #include "libavutil/opt.h"
+ #include "libavutil/parseutils.h"
+ #include "libavutil/time.h"
++#include "libavutil/avstring.h"
+ 
+ #include "avformat.h"
+ #include "internal.h"
+@@ -94,6 +97,8 @@ typedef struct SRTContext {
+     SRT_TRANSTYPE transtype;
+     int linger;
+     int tsbpd;
++    char *obe_stats;
++    int64_t obe_stats_at;
+ #if SRT_VERSION_VALUE >= 0x010400
+     int ipv6only;
+ #endif
+@@ -103,6 +108,7 @@ typedef struct SRTContext {
+ #define E AV_OPT_FLAG_ENCODING_PARAM
+ #define OFFSET(x) offsetof(SRTContext, x)
+ static const AVOption libsrt_options[] = {
++    { "obe_srt_stats", "Read-only receiver statistics JSON, sampled by the I/O owner", OFFSET(obe_stats), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, .flags = D|AV_OPT_FLAG_READONLY },
+     { "timeout",        "Timeout of socket I/O operations (in microseconds)",                   OFFSET(rw_timeout),       AV_OPT_TYPE_INT64, { .i64 = -1 }, -1, INT64_MAX, .flags = D|E },
+     { "listen_timeout", "Connection awaiting timeout (in microseconds)" ,                       OFFSET(listen_timeout),   AV_OPT_TYPE_INT64, { .i64 = -1 }, -1, INT64_MAX, .flags = D|E },
+     { "send_buffer_size", "Socket send buffer size (in bytes)",                                 OFFSET(send_buffer_size), AV_OPT_TYPE_INT,      { .i64 = -1 }, -1, INT_MAX,   .flags = D|E },
+@@ -570,6 +576,31 @@ err:
+     return ret;
+ }
+ 
++/* Only the I/O owner updates/reads this snapshot. No socket handles or secrets
++ * cross the public AVOption boundary, and bstats(clear=0) preserves counters. */
++static void libsrt_obe_stats(SRTContext *s)
++{
++    int64_t now = av_gettime_relative();
++    SRT_TRACEBSTATS p;
++    char *snapshot;
++    if (now - s->obe_stats_at < 1000000)
++        return;
++    s->obe_stats_at = now;
++    if (srt_bstats(s->fd, &p, 0) < 0 || !isfinite(p.msRTT) || p.msRTT < 0 || p.msRTT > 1e9)
++        return;
++    snapshot = av_asprintf("{\"sample_us\":%"PRId64",\"rtt_us\":%"PRId64
++                          ",\"received_packets\":%"PRId64",\"received_bytes\":%"PRIu64
++                          ",\"lost_packets\":%d,\"retransmitted_packets\":%d,\"dropped_packets\":%d"
++                          ",\"buffer_bytes\":%d,\"buffer_ms\":%d,\"buffer_available_bytes\":%d,\"latency_ms\":%d}",
++                          now, (int64_t)(p.msRTT * 1000), p.pktRecvTotal, p.byteRecvTotal,
++                          p.pktRcvLossTotal, p.pktRcvRetrans, p.pktRcvDropTotal,
++                          p.byteRcvBuf, p.msRcvBuf, p.byteAvailRcvBuf, p.msRcvTsbPdDelay);
++    if (snapshot) {
++        av_freep(&s->obe_stats);
++        s->obe_stats = snapshot;
++    }
++}
++
+ static int libsrt_read(URLContext *h, uint8_t *buf, int size)
+ {
+     SRTContext *s = h->priv_data;
+@@ -582,6 +613,8 @@ static int libsrt_read(URLContext *h, uint8_t *buf, int size)
+     }
+ 
+     ret = srt_recvmsg(s->fd, buf, size);
++    if (ret >= 0)
++        libsrt_obe_stats(s);
+     if (ret < 0) {
+         ret = libsrt_neterrno(h);
+     }

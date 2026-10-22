@@ -1,4 +1,4 @@
-# Webpanel 0.2 — contratto
+# Webpanel 0.4 — contratto
 
 Console italiana, scura, per un processo OBE gestito dal pannello. Python stdlib
 e HTML/CSS/JS, font IBM Plex locali. Nessuna dipendenza nuova. Il servizio resta
@@ -68,7 +68,7 @@ facoltativa 10–79 byte, solo per l'azione e solo via ambiente OBE.
   "encrypted": false,
   "metrics": {"cpu_percent": null, "memory_mb": null, "uptime_seconds": 0},
   "events": [{"id": 1, "time": "2026-10-21T20:00:00Z", "level": "info", "message": "Pannello pronto"}],
-  "version": {"panel": "0.2.0", "encoder": null}
+  "version": {"panel": "0.4.0", "encoder": null}
 }
 ```
 
@@ -77,8 +77,8 @@ facoltativa 10–79 byte, solo per l'azione e solo via ambiente OBE.
 `signal`, quando noto: `{width,height,scan:"i"|"p",fps:"25/1",audio:string|null}`.
 `encoding_started` solo dopo conferma CLI; `running` non certifica una consegna
 in onda. `signal_state` usa gli eventi reali del lettore. CPU indica percentuale
-di un core del solo encoder (può superare 100); memoria RSS. Nessun bitrate
-misurato o grafico di rete inventato. Eventi ordinati, limitati a 200, sanificati.
+di un core del solo encoder (può superare 100); memoria RSS. I bitrate misurati
+provengono dai contatori del motore. Eventi ordinati, limitati a 200, sanificati.
 Le modifiche non salvate restano nel form e non sono sovrascritte dal polling.
 Prima di probe/start richiedere salvataggio della bozza; passphrase mai in storage,
 URL, log o export e cancellata dal form dopo l'azione. Errori e disconnessione API
@@ -115,3 +115,54 @@ Schema, tipi, clock e monotonia dei contatori sono validati; campioni malformati
 non sostituiscono quelli validi. Le righe di misura non riempiono il registro
 eventi e non creano file di statistiche. I processi precedenti non possono
 aggiornare la telemetria del successivo.
+
+## Statistiche SRT e monitoraggio (0.4)
+
+`GET /api/state` aggiunge `srt` e `monitoring`. Campi esistenti e configurazione
+rimangono compatibili. `srt.status`: `not_applicable` per ingressi diversi da SRT,
+`idle` senza ricevitore avviato, `waiting` nei primi 5 s, `unavailable` senza
+campioni, `live` con dati validi, `stale` dopo 5 s. Tutte le letture sono `null`
+fuori dallo stato `live`, salvo `age_seconds` quando è noto l'ultimo campione.
+
+`srt` contiene `connection` (crescente nel processo), `sample_us` (clock del
+ricevitore), `age_seconds`, `rtt_us`/`rtt_ms`, `received_packets`, `received_bytes`,
+`lost_packets`, `retransmitted_packets`, `dropped_packets`, `buffer_bytes`,
+`buffer_ms`, `buffer_available_bytes`, `latency_ms`, `receive_bitrate_kbps` e
+`interval_seconds`. I rate richiedono due campioni della stessa connessione.
+I campioni duplicati non rinnovano la freshness; contatori regressivi o schema
+non valido vengono ignorati. Le righe `OBE_SRT` schema 1 non entrano nei log.
+`lost_packets` include perdite poi recuperate; `dropped_packets` conta gli scarti
+tardivi. Non vengono derivati jitter, perdita residua o latenza end-to-end.
+
+`monitoring`: `{status: "live"|"unavailable", age_seconds, sample_interval_seconds: 1,
+sample_limit: 1800, history_available, samples, active_alarms, rules}`.
+`status` riguarda il campionatore; `history_available` riguarda separatamente il
+disco. Gli allarmi hanno `id`, `time` UTC, `code`, `state`, `reason`, `run_id`,
+`session_id`, `label`, `level`, `guide`, `trigger_seconds`, `clear_seconds`.
+`state`: `active` o `resolved`; `reason`: `threshold`, `recovered`,
+`encoder_stopped`, `process_changed`, `monitor_restarted`. La chiusura per fine
+osservazione non prova il recupero del segnale. CPU/RSS, storico e allarmi sono
+campionati dal servizio anche senza client HTTP; i GET non consumano i contatori.
+
+### Storico ed export
+
+- `GET /api/history?limit=120`: JSON `{schema:1, generated_at, sample_limit,
+  alarm_limit:200, total_samples, samples:[], alarms:[]}`, in ordine cronologico.
+- `limit`: intero 1–1800, default 120; applicato ai campioni. `alarms` contiene
+  sempre fino a 200 transizioni, anche di sessioni precedenti.
+- `format=json` aggiunge un download `obe-history.json`; `format=csv` restituisce
+  le misure in `text/csv`, BOM UTF-8, con nome `obe-history.csv`.
+- Parametri sconosciuti, duplicati o fuori range: 422 `invalid_history_query`.
+  Archivio non disponibile: 503 `history_unavailable`; nessun effetto sul processo.
+- Campione: `{time, run_id, session_id, revision, phase, process_alive,
+  encoding_started, signal_state, source_fps, context, version, metrics,
+  telemetry, srt, active_alarms:[code...]}`. `context` include solo nome, protocollo
+  di ingresso e parametri video/audio. `version` conserva le versioni esposte dal
+  pannello e dal binario. Nessun URL, log grezzo, PID riutilizzabile o credenziale.
+- Archivio SQLite locale limitato a 1800 campioni e 200 transizioni; i periodi
+  senza processo non consumano campioni salvo cambi di stato/profilo. Le pagine
+  vengono riutilizzate e il database principale ha un limite di 16 MiB.
+- Risposte `no-store`, stessi controlli Host/Origin delle altre API; testi CSV
+  potenzialmente interpretabili come formula preceduti da un apostrofo.
+
+Soglie e runbook: [guida del pannello](../docs/webpanel.md#statistiche-srt-storico-e-allarmi).

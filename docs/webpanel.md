@@ -75,7 +75,8 @@ frame codificati, coda video ed errori locali di invio. Questi valori provengono
 da contatori del motore OBE e sono distinti dai bitrate configurati. Su 1080i50,
 25 frame/s corrispondono ai 50 semiquadri/s. Il bitrate UDP riguarda il payload
 MPEG-TS accettato dal socket locale: non certifica la ricezione a destinazione.
-Non sono esposti anteprima video, livelli audio o statistiche SRT non disponibili.
+Le statistiche SRT hanno una sezione dedicata; anteprima video e livelli audio
+restano fuori da questa versione.
 
 Il campionamento avviene una volta al secondo e il browser si aggiorna ogni due.
 I rate richiedono due campioni; i valori mancanti restano vuoti. Dopo cinque
@@ -141,6 +142,82 @@ accessibilità 100/100, best practices 100/100; non è una certificazione comple
 di accessibilità. Nessuna richiesta a servizi esterni; console pulita dopo il
 ricaricamento con il servizio disponibile.
 
-Restano fuori da questa versione preview video, livelli audio, statistiche SRT,
+Restano fuori da questa versione preview video, livelli audio,
 account/ruoli, più encoder e il collaudo prolungato. Contratto API:
 [webpanel/CONTRACT.md](../webpanel/CONTRACT.md).
+
+## Statistiche SRT, storico e allarmi
+
+La versione 0.4 aggiunge statistiche **del ricevitore libSRT**, lette dal thread
+di ingresso senza modificare il trasporto. Servono la patch FFmpeg
+`patches/0016-ffmpeg-srt-statistics.patch` (applicata da `build.sh` nei nuovi clone)
+e il core aggiornato in `input/lavf/lavf.c`. Per checkout FFmpeg già esistenti,
+applicare la patch una volta e ricompilare libavformat e OBE. Un vecchio binario
+continua a codificare ma espone statistiche SRT non disponibili.
+
+La panoramica mostra RTT, bitrate ricevuto, pacchetti ricevuti, perdite rilevate,
+ritrasmessi ricevuti, scarti tardivi, buffer occupato/disponibile, durata del
+buffer e latenza negoziata. `srt_bstats(clear=0)` preserva i contatori; i totali
+ripartono con ogni connessione. Le perdite rilevate possono essere recuperate,
+quindi **non sono perdita residua** e da sole non attivano un allarme di scarto.
+Il bitrate è calcolato da `byteRecvTotal` di libSRT, comprese le ritrasmissioni;
+non equivale al bitrate video utile. RTT e latenza negoziata non misurano jitter
+né latenza end-to-end. I campioni scadono dopo 5 s senza dati nuovi: rileggere
+lo stesso snapshot non ne rinnova la validità.
+
+**Storico e allarmi** raccoglie nominalmente un campione al secondo anche senza
+browser. Gli ultimi **1800 campioni** (circa 30 minuti durante la codifica) e
+**200 transizioni** restano in `webpanel/.state/monitoring.sqlite3`, con permessi
+0600 e limite di 16 MiB per il database principale. SQLite riutilizza le pagine
+liberate; il journal transitorio resta separato. A encoder fermo si registrano
+solo cambi di stato/profilo. Un disco pieno o occupato interrompe la scrittura,
+segnala l'indisponibilità e viene ritentato dopo 10 s; l'encoder e gli allarmi
+in memoria continuano. I campioni mancanti non sono ricostruiti.
+
+Il grafico mostra gli ultimi 120 campioni, la tabella gli ultimi 20. I download
+JSON/CSV includono fino a 1800 campioni; JSON include anche le transizioni.
+Ogni campione porta data UTC, sessione, processo, revisione del profilo,
+parametri video/audio e versioni pannello/encoder. **URL, passphrase e log grezzi
+sono esclusi**. Le celle testuali CSV sono protette dall'interpretazione come
+formule. I file restano locali; non vengono inviate notifiche esterne.
+
+| Allarme | Attivazione | Rientro |
+| --- | --- | --- |
+| Errore encoder | Stato errore o attesa riavvio | 3 s senza errore |
+| Sorgente assente | 3 s in riconnessione | 3 s fuori riconnessione |
+| Telemetria encoder/SRT assente | 3 s di misure scadute/indisponibili | 3 s con misure disponibili |
+| Errori UDP / scarti SRT | Incremento del relativo contatore | 10 s senza nuovi incrementi, poi 3 s di conferma |
+| RTT SRT elevato | RTT oltre 80% della latenza negoziata per 5 s | Sotto 60% per 5 s |
+| Coda video elevata | Oltre 2 s di frame alla cadenza della sorgente per 5 s | Sotto 1 s per 5 s |
+| Codifica senza avanzamento | Nessun frame nuovo da 5 s, con sorgente in ricezione e telemetria valida | 3 s dopo la ripresa |
+
+Le soglie sono prudenziali e fisse, consultabili nel pannello e nell'API; vanno
+tarate sul percorso reale. Le misure mancanti non dimostrano il rientro di un
+allarme di soglia già attivo. Stop, cambio processo e riavvio del pannello
+chiudono esplicitamente gli incidenti del processo precedente, distinguendoli
+da un recupero del segnale. Non ci sono riconoscimento manuale o notifiche esterne.
+
+Verifiche del 21 ottobre 2026: 29 test API/processo/parser e 17 test specifici
+SRT/storico/allarmi. Coprono schema e monotonia, scadenza, reset connessione,
+deduplica/isteresi, retention, persistenza, protezione CSV e degrado del disco.
+Il collaudo reale si esegue a encoder fermo nel container:
+
+```sh
+docker exec obe-webpanel python3 tests/webpanel-srt-live.py
+```
+
+PAL cifrato con proxy locale: scarto singolo di 1 pacchetto su 23 e ritardo di
+80 ms su 1 su 17, latenza SRT 400 ms. **479 pacchetti scartati dal proxy e 479
+recuperati**, 621 ritardati, zero scarti tardivi SRT nei campioni verificati.
+RTT osservato nei due campioni riportati: 0,323 / 0,391 ms. Verificati allarme
+sorgente e rientro, connessione 1→2, oscuramento dei dati scaduti, storico
+autonomo, export senza credenziali e decodifica AVC/MP2 (14.019.348 byte acquisiti).
+Artefatti: `tests/.build/webpanel-srt-de2wmx0b/`, esclusi da Git. È una prova locale,
+non una misura su un percorso Internet reale. Nessuna modifica ai router.
+
+Con il nuovo campionatore è passato anche il test reale UDP **1080i50**:
+probe, codifica, interruzione/ripresa, contatori, arresto e decodifica AVC/MP2.
+Nei tre campioni: 22,99–25,99 frame/s, coda 1–3 frame, zero errori UDP;
+10.801.728 byte acquisiti in `tests/.build/webpanel-live-lvkuiz0s/`.
+Chromium: storico, export e layout verificati a 1440 e 390 px, senza overflow
+orizzontale del documento e senza errori console dopo il ricaricamento.
