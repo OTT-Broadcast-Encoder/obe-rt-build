@@ -149,7 +149,8 @@ class PanelTests(unittest.TestCase):
         deadline = time.monotonic() + 4
         while time.monotonic() < deadline:
             result = self.state()
-            if not result['process_alive'] and result['recovery']['last_exit']:
+            if (not result['process_alive'] and result['recovery']['last_exit']
+                    and result['recovery']['last_exit']['pid'] == state['pid']):
                 return result
             time.sleep(.02)
         self.fail('The fake child did not exit')
@@ -595,9 +596,14 @@ class RecoveryRaceTests(unittest.TestCase):
         (self.root/'behavior').write_text('exit')
         os.kill(running['pid'], signal.SIGKILL)
         self.wait('restart_wait')
-        retry = self.wait('probing')
+        deadline = time.monotonic() + 4
+        while time.monotonic() < deadline:
+            retry = self.panel.state()
+            if len(retry['recovery']['history']) == 2:
+                break
+            time.sleep(.01)
+        self.assertEqual(retry['phase'], 'restart_wait')
         self.assertEqual(retry['recovery']['attempts'], 1)
-        self.wait('restart_wait')
         # Remaining retries cannot spawn after the launcher loses execute permission.
         (self.root/'run.sh').chmod(0o600)
         state = self.wait('error', seconds=14)
