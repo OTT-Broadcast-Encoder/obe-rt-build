@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Console locale OBE: configurazione validata e un solo processo posseduto."""
+"""Console locale OBE: configurazione validata e processi isolati per canale."""
 
 import argparse
 from collections import deque
@@ -18,11 +18,12 @@ import unicodedata
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qsl, quote, quote_plus, unquote, urlsplit
+from preview import Preview
 
 from monitoring import Alarms, History, PROFILE_FIELDS, RULES, SAMPLE_LIMIT, SRTStats, history_csv, utc_now
 
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 RESTART_DELAYS = (2, 4, 8)
 TELEMETRY_COUNTERS = ("video_frames", "video_bytes", "output_bytes", "output_datagrams", "output_errors")
 TELEMETRY_FIELDS = {"schema", "monotonic_ns", *TELEMETRY_COUNTERS, "video_queue_frames"}
@@ -110,7 +111,8 @@ def validate_url(value, field, output=False):
             raise ValueError()
         if parts.scheme in {"udp", "rtp", "tcp", "srt"} and parts.port is None:
             raise ValueError()
-        if any(CREDENTIAL_KEY.search(key) for key, _ in parse_qsl(plain.query, keep_blank_values=True)):
+        query = parse_qsl(plain.query, keep_blank_values=True)
+        if len(query) != len({key for key, _ in query}) or any(CREDENTIAL_KEY.search(key) for key, _ in query):
             raise ValueError()
         if re.search(r"[%;]", plain.netloc):
             raise ValueError()
@@ -202,6 +204,7 @@ class Panel:
         self.run = None
         self.session = None
         self.exit_history = deque(maxlen=10)
+        self.preview = Preview(self.root)
         self.closing = False
         self.alarms = Alarms()
         self.history = None
@@ -254,6 +257,9 @@ class Panel:
                 metrics["uptime_seconds"] = round(time.monotonic() - run.start_time, 1)
                 if self.monitor_received is not None and time.monotonic() - self.monitor_received <= TELEMETRY_MAX_AGE:
                     metrics.update(run.metrics)
+            preview = self.preview.state()
+            if self.phase != "running" and preview["status"] == "live":
+                preview.update(status="stale", frame_id=None)
             return {"phase": self.phase, "message": self.message, "revision": self.revision,
                     "config": dict(self.config), "profiles": PROFILES, "process_alive": alive,
                     "encoding_started": self.encoding_started and alive,
@@ -262,7 +268,26 @@ class Panel:
                     "metrics": metrics, "telemetry": self._telemetry_state(run, alive),
                     "srt": self._srt_state(run, alive), "monitoring": self._monitoring_state(),
                     "recovery": self._recovery_state(), "events": list(self.events),
-                    "version": {"panel": VERSION, "encoder": self.encoder_version}}
+                    "version": {"panel": VERSION, "encoder": self.encoder_version}, "preview": preview}
+
+    def start_preview(self):
+        with self.lock:
+            if self.closing or self.phase != "running" or not self.run or self.run.process.poll() is not None:
+                raise APIError(409, "encoder_not_running", "Avvia la codifica prima della preview.")
+            try:
+                self.preview.start(self.config["output_url"])
+            except ValueError as error:
+                raise APIError(422, "preview_unsupported", str(error)) from None
+            except OSError:
+                raise APIError(503, "preview_unavailable", "FFmpeg non è disponibile nella build del pannello.") from None
+            return self.state()
+
+    def preview_frame(self):
+        with self.lock:
+            frame = self.preview.jpeg() if self.phase == "running" and self.run and self.run.process.poll() is None else None
+            if frame is None:
+                raise APIError(503, "preview_not_ready", "Nessuna immagine aggiornata disponibile.")
+            return frame
 
     def _srt_state(self, run, alive):
         return (run.srt if run else SRTStats()).view(
@@ -745,6 +770,7 @@ class Panel:
                 run.secret = ""
                 if run is self.run:
                     entry = self._record_exit(run)
+                    self.preview.stop()
                     self.encoding_started, self.encrypted = False, False
                     if not run.expected_exit:
                         self.phase, self.message = "error", "Il processo OBE è terminato. Controlla gli eventi prima di riavviare."
@@ -801,6 +827,7 @@ class Panel:
         with self.lock:
             waiting = bool(self.session and self.session.retry_at is not None)
             self._cancel_session()
+            self.preview.stop()
             run = self.run
             if run is not None:
                 run.exit_reason = "panel_shutdown" if self.closing else "operator_stop"
@@ -842,6 +869,123 @@ def reject_duplicates(pairs):
             raise ValueError("duplicate")
         result[key] = value
     return result
+
+
+class Channels:
+    """Independent processes; the original API continues to address main."""
+    MAX_CHANNELS = 4
+
+    @staticmethod
+    def input_ports(url):
+        source = urlsplit(url)
+        options = dict(parse_qsl(source.query))
+        if source.scheme not in {"udp", "rtp"} and not (source.scheme == "srt" and options.get("mode") in {"listener", "rendezvous"}):
+            return set()
+        try:
+            port = source.port if source.scheme == "srt" else int(options.get("localport", source.port))
+            if source.scheme == "rtp":
+                port = int(options.get("localrtpport", port))
+            ports = {port}
+            if source.scheme == "rtp":
+                ports.add(int(options.get("localrtcpport", port + 1)))
+            if not all(1 <= value <= 65535 for value in ports):
+                raise ValueError()
+            return ports
+        except (ValueError, TypeError):
+            invalid("input_url", "La porta locale di ricezione deve essere tra 1 e 65535.")
+
+    @staticmethod
+    def output_target(url):
+        target = urlsplit(url)
+        host = "loopback" if target.hostname in {"localhost", "127.0.0.1", "::1"} else target.hostname
+        return host, target.port
+
+    def __init__(self, root, state_dir):
+        self.root, self.state_dir = Path(root), Path(state_dir)
+        self.lock, self.closing = threading.RLock(), False
+        self.monitoring_started = False
+        self.panels = {"main": Panel(root, state_dir)}
+        directory = self.state_dir / "channels"
+        if directory.exists():
+            for child in sorted(directory.iterdir()):
+                if (len(self.panels) < self.MAX_CHANNELS and (child / "config.json").is_file() and not child.is_symlink()
+                        and re.fullmatch(r"channel-[2-4]", child.name)):
+                    self.panels[child.name] = Panel(root, child)
+
+    def start_monitoring(self):
+        with self.lock:
+            if self.closing or self.monitoring_started:
+                return
+            for panel in self.panels.values():
+                panel.start_monitoring()
+            self.monitoring_started = True
+
+    def get(self, channel):
+        with self.lock:
+            if channel not in self.panels:
+                raise APIError(404, "channel_not_found", "Canale non trovato.")
+            return self.panels[channel]
+
+    def state(self):
+        with self.lock:
+            result = []
+            for key, panel in self.panels.items():
+                with panel.lock:
+                    result.append({"id": key, "name": panel.config["name"], "phase": panel.phase,
+                                   "process_alive": panel.run is not None and panel.run.process.poll() is None})
+            return {"limit": self.MAX_CHANNELS, "channels": result}
+
+    def create(self, payload):
+        if not isinstance(payload, dict) or set(payload) != {"name"}:
+            raise APIError(422, "invalid_request", "Indica soltanto il nome del nuovo canale.")
+        config = validate_config(dict(DEFAULT_CONFIG, name=payload["name"]))
+        with self.lock:
+            if self.closing:
+                raise APIError(503, "panel_closing", "Il pannello si sta arrestando.")
+            if len(self.panels) >= self.MAX_CHANNELS:
+                raise APIError(409, "channel_limit", "Questo banco gestisce fino a quattro canali.")
+            number = next(i for i in range(2, 5) if f"channel-{i}" not in self.panels)
+            channel = f"channel-{number}"
+            config.update(input_url=f"udp://127.0.0.1:{12000 + number * 10}",
+                          output_url=f"udp://127.0.0.1:{13000 + number * 10}")
+            panel = Panel(self.root, self.state_dir / "channels" / channel)
+            panel.save_config({"revision": panel.revision, "config": config})
+            if self.monitoring_started:
+                panel.start_monitoring()
+            self.panels[channel] = panel
+            return {"id": channel, "state": panel.state()}
+
+    def action(self, channel, kind, payload):
+        with self.lock:
+            if self.closing:
+                raise APIError(503, "panel_closing", "Il pannello si sta arrestando.")
+            panel = self.get(channel)
+            with panel.lock:
+                ports = self.input_ports(panel.config["input_url"])
+                for key, other in self.panels.items():
+                    if key == channel:
+                        continue
+                    with other.lock:
+                        if not other._busy():
+                            continue
+                        if ports & self.input_ports(other.config["input_url"]):
+                            raise APIError(409, "input_in_use", "Usa porte di ingresso UDP/RTP/SRT listener distinte per i canali attivi.")
+                        if kind == "start" and self.output_target(panel.config["output_url"]) == self.output_target(other.config["output_url"]):
+                            raise APIError(409, "output_in_use", "Questa uscita è già usata da un altro canale attivo.")
+                return panel.action(kind, payload)
+
+    def close(self):
+        with self.lock:
+            self.closing = True
+            panels = list(self.panels.values())
+            for panel in panels:
+                with panel.lock:
+                    panel.closing = True
+        workers = [threading.Thread(target=panel.close) for panel in panels]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -916,7 +1060,23 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self._guard()
             path = urlsplit(self.path).path
-            panel = self.server.panel
+            channels = self.server.channels
+            if path == "/api/channels":
+                if self.command == "GET":
+                    self._reply(200, channels.state())
+                elif self.command == "POST":
+                    self._reply(201, channels.create(self._body()))
+                else:
+                    raise APIError(405, "method_not_allowed", "Metodo non consentito.")
+                return
+            channel = "main"
+            if path.startswith("/api/channels/"):
+                match = re.fullmatch(r"/api/channels/(main|channel-[2-4])/([a-z-]+)", path)
+                if not match:
+                    raise APIError(404, "not_found", "Risorsa non disponibile.")
+                channel, resource = match.groups()
+                path = "/api/" + resource
+            panel = channels.get(channel)
             if self.command == "GET" and path == "/api/state":
                 self._reply(200, panel.state())
             elif self.command == "GET" and path == "/api/history":
@@ -925,6 +1085,16 @@ class Handler(BaseHTTPRequestHandler):
                     self._reply(200, history_csv(data), "text/csv; charset=utf-8", "obe-history.csv")
                 else:
                     self._reply(200, data, filename="obe-history.json" if format_name else None)
+            elif self.command == "GET" and path == "/api/preview-frame":
+                self._reply(200, panel.preview_frame(), "image/jpeg")
+            elif self.command == "POST" and path in {"/api/preview", "/api/preview-stop"}:
+                if self._body():
+                    raise APIError(422, "invalid_request", "La preview richiede un oggetto JSON vuoto.")
+                if path == "/api/preview":
+                    self._reply(200, panel.start_preview())
+                else:
+                    panel.preview.stop()
+                    self._reply(200, panel.state())
             elif self.command == "GET" and path in ASSETS:
                 filename, mime = ASSETS[path]
                 try:
@@ -935,7 +1105,7 @@ class Handler(BaseHTTPRequestHandler):
             elif self.command == "PUT" and path == "/api/config":
                 self._reply(200, panel.save_config(self._body()))
             elif self.command == "POST" and path in {"/api/probe", "/api/start"}:
-                self._reply(202, panel.action(path.rsplit("/", 1)[1], self._body()))
+                self._reply(202, channels.action(channel, path.rsplit("/", 1)[1], self._body()))
             elif self.command == "POST" and path == "/api/stop":
                 if self._body():
                     raise APIError(422, "invalid_request", "L'arresto richiede un oggetto JSON vuoto.")
@@ -962,9 +1132,9 @@ def main():
     panel = None
     server = None
     try:
-        panel = Panel(args.root, args.state_dir)
+        panel = Channels(args.root, args.state_dir)
         server = ThreadingHTTPServer((args.bind, args.port), Handler)
-        server.panel = panel
+        server.channels = panel
         server.static_dir = Path(__file__).resolve().parent / "static"
         panel.start_monitoring()
 

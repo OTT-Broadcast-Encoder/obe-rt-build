@@ -27,8 +27,11 @@
   let lastSampleAt = 0;
   let historyLoading = false;
   let historyLoadedAt = 0;
+  let historyEpoch = 0;
   let alarmSignature = "";
   let ruleSignature = "";
+  let selectedChannel = new URLSearchParams(location.search).get("channel") || "main";
+  let channelSignature = "";
 
   const text = (id, value) => { byId(id).textContent = value; };
   const isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
@@ -120,6 +123,10 @@
     const stopped = canConfigure();
     const active = activeProcess();
     const ready = connected && !pending && stopped && !dirty && !conflict();
+    byId("channel-select").disabled = Boolean(pending);
+    byId("new-channel").disabled = !connected || Boolean(pending) || dirty || byId("channel-select").options.length >= 4;
+    byId("preview-toggle").disabled = !connected || Boolean(pending) || (!state?.preview?.pid && state?.phase !== "running");
+    byId("preview-toggle").textContent = state?.preview?.pid ? "Spegni preview" : "Attiva preview";
     document.querySelectorAll('[data-action="start"]').forEach((button) => {
       button.disabled = !ready;
       if (button.closest(".session-actions")) button.hidden = Boolean(active);
@@ -361,14 +368,24 @@
 
   async function loadHistory(force = false) {
     if (historyLoading || window.location.hash !== "#monitoring" || (!force && Date.now() - historyLoadedAt < 5000)) return;
+    const epoch = historyEpoch;
     historyLoading = true;
     try {
-      renderHistory(await api("history?limit=120"));
+      const data = await api("history?limit=120");
+      if (epoch === historyEpoch) renderHistory(data);
     } catch (error) {
-      text("history-status", `Storico non aggiornato. ${error.message} Nuovo tentativo automatico.`);
+      if (epoch === historyEpoch) text("history-status", `Storico non aggiornato. ${error.message} Nuovo tentativo automatico.`);
     } finally {
-      historyLoadedAt = Date.now();
-      historyLoading = false;
+      if (epoch === historyEpoch) {
+        historyLoadedAt = Date.now();
+        historyLoading = false;
+      }
+    }
+  }
+
+  function updateHistoryLinks() {
+    for (const link of document.querySelectorAll("[data-history-format]")) {
+      link.href = `/api/channels/${encodeURIComponent(selectedChannel)}/history?limit=1800&format=${link.dataset.historyFormat}`;
     }
   }
 
@@ -520,6 +537,7 @@
     renderTelemetry();
     renderSrt();
     renderMonitoring();
+    renderPreview();
     renderEvents();
     text("last-update", `Aggiornato alle ${timeFormat.format(new Date())}`);
     updateControls();
@@ -529,6 +547,7 @@
   function markDisconnected(error) {
     connected = false;
     renderRecovery();
+    renderPreview();
     const banner = byId("api-error");
     banner.textContent = `Connessione al servizio interrotta. ${error.message} Nuovo tentativo automatico tra 2 secondi.`;
     banner.hidden = false;
@@ -560,7 +579,8 @@
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch(`/api/${path}`, {
+      const endpoint = path === "channels" ? "/api/channels" : `/api/channels/${encodeURIComponent(selectedChannel)}/${path}`;
+      const response = await fetch(endpoint, {
         method,
         headers: body === undefined ? { Accept: "application/json" } : { Accept: "application/json", "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -588,16 +608,72 @@
     const epoch = mutationEpoch;
     try {
       if (!pending) {
-        const next = await api("state");
-        if (epoch === mutationEpoch && !pending) applyState(next);
+        const [next, channels] = await Promise.all([api("state"), api("channels")]);
+        if (epoch === mutationEpoch && !pending) { renderChannels(channels); applyState(next); }
       }
     } catch (error) {
-      if (epoch === mutationEpoch && !pending) markDisconnected(error);
-    } finally {
-      loadHistory();
-      window.setTimeout(poll, 2000);
-    }
+      if (epoch === mutationEpoch && !pending) {
+        if (error.status === 404 && selectedChannel !== "main") {
+          await selectChannel("main");
+          setNotice("Il canale richiesto non è disponibile. Aperto il canale principale.", "warning");
+        } else markDisconnected(error);
+      }
+    } finally { loadHistory(); window.setTimeout(poll, 2000); }
   }
+
+  function renderChannels(data) {
+    const signature = JSON.stringify(data);
+    if (signature === channelSignature) return;
+    channelSignature = signature;
+    const select = byId("channel-select");
+    select.replaceChildren(...data.channels.map((channel) => {
+      const option = document.createElement("option");
+      option.value = channel.id;
+      option.textContent = `${channel.name} · ${phaseLabels[channel.phase] || channel.phase}`;
+      return option;
+    }));
+    select.value = selectedChannel;
+    text("channel-summary", `${data.channels.filter(channel => channel.process_alive).length} attivi · ${data.channels.length}/${data.limit} canali`);
+  }
+
+  async function selectChannel(id) {
+    if (dirty || pending) { byId("channel-select").value = selectedChannel; setNotice("Salva o ripristina la bozza prima di cambiare canale.", "warning"); return; }
+    selectedChannel = id;
+    mutationEpoch += 1;
+    pending = "channel";
+    state = null; baseConfig = null; draftRevision = null; cpuSamples = []; chartPid = null;
+    historyEpoch += 1; historyLoading = false; historyLoadedAt = 0;
+    exitSignature = ""; alarmSignature = ""; ruleSignature = "";
+    byId("auto-restart").value = "false";
+    renderRecovery(); renderMonitoring();
+    renderHistory({ samples: [], alarms: [], total_samples: 0, sample_limit: 1800 });
+    text("history-status", "Caricamento dello storico del canale…");
+    updateHistoryLinks();
+    renderPreview();
+    byId("srt-passphrase").value = "";
+    setNotice(""); updateControls();
+    const url = new URL(location.href);
+    url.searchParams.set("channel", id);
+    history.replaceState(null, "", url);
+    try { const [next, channels] = await Promise.all([api("state"), api("channels")]); channelSignature = ""; renderChannels(channels); applyState(next); }
+    catch (error) { markDisconnected(error); }
+    finally { pending = null; updateControls(); }
+  }
+
+  byId("channel-select").addEventListener("change", event => void selectChannel(event.target.value));
+  updateHistoryLinks();
+  byId("new-channel").addEventListener("click", () => byId("channel-dialog").showModal());
+  byId("cancel-channel").addEventListener("click", () => byId("channel-dialog").close());
+  byId("channel-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    if (pending) return;
+    pending = "create-channel"; mutationEpoch += 1; updateControls();
+    let created;
+    try { created = await api("channels", "POST", { name: byId("channel-name").value.trim() }); byId("channel-dialog").close(); byId("channel-form").reset(); }
+    catch (error) { byId("channel-dialog").close(); setNotice(error.message, "error"); }
+    finally { pending = null; updateControls(); }
+    if (created) await selectChannel(created.id);
+  });
 
   async function runAction(action, payload) {
     if (pending || !connected) return;
@@ -609,7 +685,7 @@
     try {
       const next = await api(action, action === "config" ? "PUT" : "POST", payload);
       applyState(next, { saved: action === "config", sample: false });
-      const confirmations = { config: "Configurazione salvata. Ora puoi verificare l’ingresso o avviare l’encoder.", probe: "Verifica dell’ingresso avviata. L’esito comparirà nello stato e nel registro eventi.", start: "Richiesta di avvio accettata. Attendi la conferma del processo.", stop: next.process_alive ? "Richiesta di arresto accettata." : "Encoder arrestato." };
+      const confirmations = { config: "Configurazione salvata. Ora puoi verificare l’ingresso o avviare l’encoder.", probe: "Verifica dell’ingresso avviata. L’esito comparirà nello stato e nel registro eventi.", start: "Richiesta di avvio accettata. Attendi la conferma del processo.", stop: next.process_alive ? "Richiesta di arresto accettata." : "Encoder arrestato.", preview: "Preview avviata: in attesa del primo fotogramma.", "preview-stop": "Preview spenta." };
       setNotice(confirmations[action]);
     } catch (error) {
       setNotice(error.message, "error");
@@ -688,6 +764,29 @@
     if (activeProcess()) void runAction("stop", {});
   });
   byId("event-filter").addEventListener("change", () => renderEvents(true));
+  let previewImageUrl = null;
+  function renderPreview() {
+    const slot = byId("preview-image");
+    const preview = connected ? state?.preview : null;
+    const status = preview?.status || "idle";
+    const labels = { idle: "Preview spenta", waiting: "In attesa dell’immagine…", stale: "Immagine non aggiornata", live: "Preview aggiornata", error: "Preview interrotta: verifica l’uscita e che la porta locale sia libera, poi riattivala." };
+    text("preview-status", connected ? labels[status] || labels.idle : "Preview non disponibile: servizio non connesso");
+    if (status === "live") {
+      const source = `/api/channels/${encodeURIComponent(selectedChannel)}/preview-frame?frame=${preview.frame_id}`;
+      if (previewImageUrl !== source) {
+        previewImageUrl = source;
+        const image = new Image();
+        image.alt = "Anteprima dell’uscita del canale selezionato";
+        image.onload = () => { if (previewImageUrl === source && connected) slot.replaceChildren(image); };
+        image.onerror = () => {
+          if (previewImageUrl !== source) return;
+          slot.replaceChildren(); text("preview-status", "Nessuna immagine aggiornata disponibile");
+        };
+        image.src = source;
+      }
+    } else { previewImageUrl = null; slot.replaceChildren(); }
+  }
+  byId("preview-toggle").addEventListener("click", () => void runAction(state?.preview?.pid ? "preview-stop" : "preview", {}));
   window.addEventListener("hashchange", setView);
   window.addEventListener("beforeunload", (event) => {
     byId("srt-passphrase").value = "";

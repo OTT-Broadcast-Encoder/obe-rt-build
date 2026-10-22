@@ -175,7 +175,8 @@ class PanelTests(unittest.TestCase):
         for value in ['udp://127.0.0.1:12000\nstart', 'udp://127.0.0.1:12000,evil=1',
                       'file:///etc/passwd', 'http://user:password@localhost/video',
                       'srt://localhost:12000?%70assphrase=dummy-test-key',
-                      'srt://localhost:12000?pbkeylen=16', 'udp://127.0.0.1:70000']:
+                      'srt://localhost:12000?pbkeylen=16', 'udp://127.0.0.1:70000',
+                      'udp://localhost:12000?localport=12000&localport=12020']:
             with self.subTest(url=value):
                 self.assertEqual(self.save(input_url=value)[0], 422)
         for changes in [{'video_bitrate_kbps': True}, {'mux_bitrate_kbps': 128},
@@ -491,6 +492,132 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(len(state['recovery']['history']), 10)
 
 
+    def test_independent_processes_and_persistence(self):
+        status, created = self.request('POST', '/api/channels', {'name': 'Secondo canale'})
+        self.assertEqual(status, 201, created)
+        prefix = '/api/channels/' + created['id']
+        self.assertEqual(self.request('GET', prefix+'/state')[1]['config']['name'], 'Secondo canale')
+        self.request('POST', '/api/start', {'revision': self.state()['revision']})
+        first = self.wait_phase({'running'})
+        self.assertEqual(self.request('POST', prefix+'/start', {'revision': created['state']['revision']})[0], 202)
+        deadline = time.monotonic()+4
+        while time.monotonic() < deadline:
+            second = self.request('GET', prefix+'/state')[1]
+            if second['phase'] == 'running': break
+            time.sleep(.05)
+        self.assertEqual(second['phase'], 'running')
+        self.assertNotEqual(first['pid'], second['pid'])
+        self.request('POST', prefix+'/stop', {})
+        self.assertTrue(self.state()['process_alive'])
+        self.stop_server()
+        self.start_server()
+        self.assertEqual(self.request('GET', prefix+'/state')[1]['config']['name'], 'Secondo canale')
+        self.assertFalse(self.state()['process_alive'])
+        self.assertFalse(self.request('GET', prefix+'/state')[1]['process_alive'])
+
+    def test_preview_lifecycle_and_stale_image(self):
+        self.assertEqual(self.request('POST', '/api/preview', {})[0], 409)
+        self.assertEqual(self.request('GET', '/api/preview-frame')[0], 503)
+        self.assertEqual(self.request('POST', '/api/preview', {'url': 'file:///tmp/x'})[0], 422)
+        executable = self.root/'target-root/usr/local/bin/ffmpeg'
+        executable.parent.mkdir(parents=True)
+        executable.write_text("#!/usr/bin/env python3\nimport os,time\nos.write(1,b'\\xff\\xd8test\\xff\\xd9')\ntime.sleep(30)\n")
+        executable.chmod(0o700)
+        self.request('POST', '/api/start', {'revision': self.state()['revision']})
+        self.wait_phase({'running'})
+        self.assertEqual(self.request('POST', '/api/preview', {})[0], 200)
+        deadline = time.monotonic()+3
+        while self.state()['preview']['status'] != 'live' and time.monotonic() < deadline: time.sleep(.05)
+        preview = self.state()['preview']
+        self.assertEqual(preview['status'], 'live')
+        status, frame = self.request('GET', '/api/preview-frame')
+        self.assertEqual((status, frame), (200, b'\xff\xd8test\xff\xd9'))
+        time.sleep(3.1)
+        self.assertEqual(self.state()['preview']['status'], 'stale')
+        self.assertEqual(self.request('GET', '/api/preview-frame')[0], 503)
+        self.request('POST', '/api/stop', {})
+        self.assertEqual(self.state()['preview']['status'], 'idle')
+        with self.assertRaises(ProcessLookupError): os.kill(preview['pid'], 0)
+
+    def test_channel_ports_include_local_bindings_and_output_aliases(self):
+        _, created = self.request('POST', '/api/channels', {'name': 'Port checks'})
+        prefix = '/api/channels/'+created['id']
+        self.request('POST', '/api/start', {'revision': self.state()['revision']})
+        self.wait_phase({'running'})
+        for changes, code in (
+            ({'input_url': 'udp://127.0.0.1:12345?localport=12000'}, 'input_in_use'),
+            ({'input_url': 'udp://127.0.0.1:12000?localrtpport=12345'}, 'input_in_use'),
+            ({'input_url': 'rtp://127.0.0.1:12345?localrtcpport=12000'}, 'input_in_use'),
+            ({'input_url': 'srt://127.0.0.1:12000?mode=listener'}, 'input_in_use'),
+            ({'output_url': 'udp://localhost:13000?ttl=2'}, 'output_in_use')):
+            state = self.request('GET', prefix+'/state')[1]
+            config = dict(created['state']['config'], **changes)
+            saved = self.request('PUT', prefix+'/config', {'revision': state['revision'], 'config': config})[1]
+            status, result = self.request('POST', prefix+'/start', {'revision': saved['revision']})
+            self.assertEqual(status, 409, result)
+            self.assertEqual(result['error']['code'], code)
+
+    def test_conflicts_limits_and_invalid_ids(self):
+        status, created = self.request('POST', '/api/channels', {'name': 'Duplicato'})
+        self.assertEqual(status, 201)
+        prefix = '/api/channels/'+created['id']
+        self.request('PUT', prefix+'/config', {'revision': created['state']['revision'], 'config': self.state()['config']})
+        self.request('POST', '/api/start', {'revision': self.state()['revision']})
+        self.wait_phase({'running'})
+        revision = self.request('GET', prefix+'/state')[1]['revision']
+        self.assertEqual(self.request('POST', prefix+'/start', {'revision': revision})[0], 409)
+        for _ in range(2): self.assertEqual(self.request('POST', '/api/channels', {'name': 'Altro'})[0], 201)
+        self.assertEqual(self.request('POST', '/api/channels', {'name': 'Quinto'})[0], 409)
+        self.assertEqual(len(self.request('GET', '/api/channels')[1]['channels']), 4)
+        self.assertEqual(self.request('GET', '/api/channels/../state')[0], 404)
+
+    def test_channel_history_is_isolated_and_survives_restart(self):
+        self.assertEqual(self.save(name='Main history')[0], 200)
+        _, created = self.request('POST', '/api/channels', {'name': 'Second history'})
+        prefix = '/api/channels/' + created['id']
+        self.start_encoder()
+        self.assertEqual(self.request('POST', prefix+'/start', {'revision': created['state']['revision']})[0], 202)
+        time.sleep(3.2)
+        histories = {}
+        for path, name in [('/api', 'Main history'), (prefix, 'Second history')]:
+            status, history = self.request(path=path+'/history?limit=1800')
+            self.assertEqual(status, 200)
+            self.assertGreaterEqual(history['total_samples'], 2)
+            self.assertEqual({sample['context']['name'] for sample in history['samples'] if sample['process_alive']}, {name})
+            self.assertEqual(self.request(path=path+'/state')[1]['monitoring']['status'], 'live')
+            csv_status, csv_data = self.request(path=path+'/history?format=csv')
+            self.assertEqual(csv_status, 200)
+            self.assertIn(name.encode(), csv_data)
+            histories[path] = history['total_samples']
+        self.request('POST', prefix+'/stop', {})
+        self.assertTrue(self.state()['process_alive'])
+        self.stop_server()
+        self.start_server()
+        for path, count in histories.items():
+            self.assertGreaterEqual(self.request(path=path+'/history')[1]['total_samples'], count)
+            self.assertFalse(self.request(path=path+'/state')[1]['process_alive'])
+        revision = self.request(path=prefix+'/state')[1]['revision']
+        self.request('POST', prefix+'/start', {'revision': revision})
+        time.sleep(2.2)
+        self.assertGreater(self.request(path=prefix+'/history')[1]['total_samples'], histories[prefix])
+
+    def test_retry_reserves_channel_ports_and_stop_is_independent(self):
+        _, created = self.request('POST', '/api/channels', {'name': 'Second retry'})
+        prefix = '/api/channels/' + created['id']
+        main = self.start_encoder(auto_restart=True)
+        conflicting = dict(created['state']['config'], input_url=main['config']['input_url'])
+        _, saved = self.request('PUT', prefix+'/config', {'revision': created['state']['revision'], 'config': conflicting})
+        crashed = self.crash(main)
+        self.assertEqual(crashed['phase'], 'restart_wait')
+        status, result = self.request('POST', prefix+'/start', {'revision': saved['revision']})
+        self.assertEqual((status, result['error']['code']), (409, 'input_in_use'))
+        self.request('POST', prefix+'/stop', {})
+        self.assertTrue(self.state()['recovery']['active'])
+        self.request('POST', '/api/stop', {})
+        self.assertFalse(self.state()['recovery']['active'])
+        self.assertEqual(self.request('POST', prefix+'/start', {'revision': saved['revision']})[0], 202)
+
+
 class RecoveryRaceTests(unittest.TestCase):
     def setUp(self):
         self.module = runpy.run_path(str(ROOT/'webpanel/server.py'))
@@ -630,6 +757,7 @@ class RecoveryRaceTests(unittest.TestCase):
         self.assertEqual(state['recovery']['attempts'], 1)
         self.assertEqual(self.panel.session.secret, '')
         self.assertEqual(self.panel.run.secret, '')
+
 
 
 class TelemetryTests(unittest.TestCase):

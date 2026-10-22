@@ -9,7 +9,7 @@ the exact checked-out commits; local compatibility patches are listed below.
 | --- | --- |
 | FFmpeg | n9.0.2 |
 | libSRT | v1.5.7 (`899348d8318eb9a3c5a5b6ec43c4a1114288773a`), Haivision upstream, OpenSSL encryption |
-| x264 | OBE `368ad15875cf45478ff59cfae2441b1049dbdc91` + official upstream `0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee` |
+| x264 | OBE `72de62b0fcc29241d735c21ea88d9376447c6dd6`, including official upstream `0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee` |
 | x265 | 4.2, official multicoreware Bitbucket repository |
 | FDK-AAC | v3.0.0 |
 | TwoLAME | 0.4.0, upstream njh/twolame |
@@ -24,7 +24,7 @@ the exact checked-out commits; local compatibility patches are listed below.
 | libdrm | 2.4.134 |
 | libva / libva-utils | 2.24.1 / 2.24.0 |
 | intel-vaapi-driver | `fd727a4e9cb8b2878a1e93d4dddc8dd1c1a4e0ea`, archived i965 driver |
-| OBE | `3fabd16c5b00daef9945a63c9bdfa1c8467ef6f6` + compatibility patch |
+| OBE | `8ecb290d29bc45fcc940eba28c5070d332fa03db`, integrated compatibility, URL/SRT, telemetry, preset and mid-GOP fixes |
 
 NDI v4 and DeckLink 10.8.5/10.11.2 are retained. Proprietary SDK upgrades,
 hardware-driver upgrades, optional VapourSynth plugins, and deployment are
@@ -37,6 +37,12 @@ FFmpeg enables `--enable-libsrt`. OpenSSL development files are provided by the
 isolated `obe-rt-build:srt-2026-10-21` image.
 
 ## Compatibility changes
+
+The pinned OBE and x264 revisions already include their compatibility changes.
+Patches `0007`, `0008`, `0011`, `0012`, `0013`, `0015`, `0017` and `0018`
+are retained as historical records and must not be reapplied to these revisions.
+FFmpeg patch `0016-ffmpeg-srt-statistics.patch` exports the libSRT measurements
+read by the integrated OBE URL input; `0009` and `0014` still apply to FFmpeg.
 
 - `0007-x264-current-upstream.patch` integrates official x264 changes into
   the OBE fork, retaining speed control and the fork's custom encoding options.
@@ -102,8 +108,8 @@ All compatibility patches were checked against their pinned Git base trees.
 URL reconnection was rebuilt and checked with `tests/input-url-reconnect.py`:
 three sender restarts with reset timestamps, loss of only audio or video, and
 shutdown during silence/backoff. UDP PAL input also passed its regression check.
-Patches `0008`, `0011` and `0012` reproduce the tested URL reader on the pinned
-OBE revision; Internet transport and sustained operation still need validation.
+The pinned OBE revision includes the tested URL reader; Internet transport
+and sustained operation still need validation.
 
 The LTN integration rebuilt and installed libklscte35 (209 API tests passed),
 libltntstools and OBE, reusing the other unchanged libraries. The current smoke

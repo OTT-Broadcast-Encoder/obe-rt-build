@@ -18,7 +18,7 @@ The [web panel](docs/webpanel.md) provides a local Italian control console:
 saved profiles, input probe, start/stop, process metrics and encoder events.
 Run `./webpanel/run.sh` after the isolated build, then open
 `http://127.0.0.1:18088`. Remote access uses an SSH tunnel; the panel manages
-one encoder and does not automatically start it or change router settings.
+up to four isolated encoders and does not automatically start them or change router settings.
 
 ## Isolated Ubuntu build
 

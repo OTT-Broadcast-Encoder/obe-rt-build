@@ -12,14 +12,14 @@ LIBKLVANC_TAG=vid.obe.1.12.0
 LIBKLSCTE35_TAG=9df34b200b71485fcd757f9da6b3aeb492e559b6
 LIBMPEGTS_TAG=1ee8519e79280f9cfbcf65af90cc9dc26345527a
 X265_TAG=4.2
-X264_TAG=368ad15875cf45478ff59cfae2441b1049dbdc91
+X264_TAG=72de62b0fcc29241d735c21ea88d9376447c6dd6
 X264_BITDEPTH=8
 LIBLTNTSTOOLS_TAG=f6399630de4d29496c94256f1fec727efa10d1df
 VAPOURSYNTH_TAG=R81
 ZIMG_TAG=release-3.0.6
 TWOLAME_TAG=0.4.0
 FDKAAC_TAG=v3.0.0
-OBE_TAG=3fabd16c5b00daef9945a63c9bdfa1c8467ef6f6
+OBE_TAG=8ecb290d29bc45fcc940eba28c5070d332fa03db
 NDI_SDK=$PWD/NDI/sdk
 
 
@@ -181,18 +181,11 @@ fi
 if [ ! -d obe-rt ]; then
     git clone https://github.com/OTT-Broadcast-Encoder/obe-rt.git
     git -C obe-rt checkout "$OBE_TAG"
-    git -C obe-rt apply ../patches/0008-obe-current-libraries.patch
-    git -C obe-rt apply ../patches/0011-obe-network-input.patch
-    git -C obe-rt apply ../patches/0012-obe-url-reconnect.patch
-    git -C obe-rt apply ../patches/0013-obe-ltn-safety-fixes.patch
-    git -C obe-rt apply ../patches/0015-obe-srt-input.patch
-    git -C obe-rt apply ../patches/0017-obe-avc-preset.patch
 fi
 
 if [ ! -d x264 ]; then
     git clone https://github.com/OTT-Broadcast-Encoder/x264.git
     git -C x264 checkout "$X264_TAG"
-    git -C x264 apply ../patches/0007-x264-current-upstream.patch
 fi
 
 if [ ! -d ffmpeg ]; then

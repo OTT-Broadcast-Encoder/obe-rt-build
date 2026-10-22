@@ -1,6 +1,6 @@
 # Webpanel OBE
 
-Console scura in italiano per configurare e controllare **un encoder locale**.
+Console scura in italiano per configurare e controllare **fino a quattro encoder locali**.
 Usa la build URL/SRT già compilata e aggiunge un servizio Python senza nuove
 dipendenze. Non modifica il server remoto, i router o un encoder avviato altrove.
 
@@ -78,16 +78,19 @@ frame codificati, coda video ed errori locali di invio. Questi valori provengono
 da contatori del motore OBE e sono distinti dai bitrate configurati. Su 1080i50,
 25 frame/s corrispondono ai 50 semiquadri/s. Il bitrate UDP riguarda il payload
 MPEG-TS accettato dal socket locale: non certifica la ricezione a destinazione.
-Le statistiche SRT hanno una sezione dedicata; anteprima video e livelli audio
-restano fuori da questa versione.
+Le statistiche SRT hanno una sezione dedicata e la preview video è disponibile
+su richiesta. I livelli audio restano fuori da questa versione.
 
 Il campionamento avviene una volta al secondo e il browser si aggiorna ogni due.
 I rate richiedono due campioni; i valori mancanti restano vuoti. Dopo cinque
 secondi senza campioni validi, le misure scadono e vengono oscurate. Un vecchio
 binario senza `show telemetry` continua a codificare e indica telemetria del
 flusso non disponibile. Per abilitarla serve ricompilare anche `obe-rt` dal
-branch `feat/encoder-telemetry`; la sola modifica del pannello non basta.
+commit fissato in `build.sh`; la sola modifica del pannello non basta.
 Il primo commit del core che espone questi contatori è `ee5f5a5`.
+Ogni canale dispone di processo, recupero, monitoraggio e database SQLite
+indipendenti. Storico, allarmi ed esportazioni seguono il canale selezionato;
+un canale in attesa di riavvio mantiene riservate le proprie porte.
 
 I log sono limitati e mantenuti in memoria. La riconnessione della sorgente nel
 lettore OBE mantiene lo stesso processo ed è distinta dal recupero dopo crash.
@@ -163,12 +166,9 @@ la decodifica AVC/MP2 di due secondi. Risultati: `tests/.build/webpanel-live-onp
 un timeout della sorgente dopo il riavvio; la successiva prova completa è passata.
 Questi tempi sono osservazioni di laboratorio, non una garanzia sotto carico.
 
-La revisione del recupero è isolata nel branch `feat/webpanel-recovery` e nel
-container `obe-webpanel-recovery`, accessibile localmente su porta **18090**.
-Usa gli artefatti compilati esistenti in sola lettura e un proprio profilo.
-Per accedervi dal PC: `ssh -N -L 18090:127.0.0.1:18090 encoder-server`, poi aprire
-`http://127.0.0.1:18090`. Il collaudo di 24 ore e il riaggancio dei ricevitori
-reali restano da completare.
+Recupero, monitoraggio, multicanale e preview sono integrati su `master`.
+Il servizio unico è `obe-webpanel`, accessibile localmente su porta **18088**.
+Il collaudo di 24 ore e il riaggancio dei ricevitori reali restano da completare.
 
 La revisione con telemetria è stata collaudata anche sul vero encoder PAL e
 1080i50, includendo interruzione/ripresa sorgente e decodifica AVC/MP2.
@@ -273,3 +273,67 @@ Nei tre campioni: 22,99–25,99 frame/s, coda 1–3 frame, zero errori UDP;
 10.801.728 byte acquisiti in `tests/.build/webpanel-live-lvkuiz0s/`.
 Chromium: storico, export e layout verificati a 1440 e 390 px, senza overflow
 orizzontale del documento e senza errori console dopo il ricaricamento.
+
+Restano fuori da questa versione livelli audio, statistiche SRT,
+account/ruoli e il collaudo prolungato. Contratto API:
+[webpanel/CONTRACT.md](../webpanel/CONTRACT.md).
+
+### Multicanale
+
+Il selettore **Canale** mostra nome e stato; **Nuovo canale** crea un profilo
+indipendente, fino a quattro. Stop, configurazione, log e misure riguardano il
+canale selezionato. Cambiare scheda non ferma gli altri encoder; allo spegnimento
+del servizio vengono arrestati tutti i processi posseduti.
+Gli ingressi UDP/RTP e le destinazioni devono usare porte distinte fra i canali.
+Dimensionare CPU e memoria con il carico reale prima dell'uso prolungato.
+
+`python3 tests/webpanel.py` include isolamento, persistenza, limite e conflitti.
+`docker exec obe-webpanel python3 tests/webpanel-multichannel-live.py`
+verifica due encoder reali contemporanei PAL/1080i, stop indipendente e decodifica.
+Usare esclusivamente un servizio di collaudo fermo: il test salva e ripristina
+i profili e crea il secondo canale se manca.
+
+### Preview dell'uscita
+
+**Attiva preview** avvia FFmpeg solo per il canale selezionato. Riceve l'uscita
+UDP già configurata, deinterlaccia e produce JPEG larghi 640 px, senza audio,
+al massimo un'immagine/s; il browser aggiorna ogni 2 s. Non cambia il bitrate o
+le uscite OBE. Sono ammessi loopback e multicast IP; per unicast remoto serve
+un monitor a destinazione. La porta unicast locale deve essere libera: la
+preview non abilita il riuso del socket, per non sottrarre pacchetti a un ricevitore.
+
+Memoria limitata all'ultimo JPEG (massimo 1 MiB), nessuna registrazione su disco.
+Immagini più vecchie di 3 s, sorgente in riconnessione, crash o stop non appaiono
+come live. Uno stop della preview lascia attivo l'encoder; stop/crash dell'encoder
+e shutdown fermano anche FFmpeg. Il processo preview consuma CPU aggiuntiva,
+non inclusa nella metrica **CPU encoder**. Un errore richiede riattivazione manuale.
+Non sostituisce controllo dei campi, ascolto audio o analisi qualità.
+
+Test: `tests/webpanel-preview-unit.py`, lifecycle API in `tests/webpanel.py` e
+`docker exec obe-webpanel python3 tests/webpanel-preview-live.py`.
+Quest'ultimo usa solo HD sintetico e porte locali; ripristina il profilo iniziale.
+
+### Pannello unificato
+
+Il checkout `master` usa le revisioni del core e delle librerie fissate in
+`build.sh` e `sources-manifest.txt`. Il container `obe-webpanel` espone soltanto
+`127.0.0.1:18088`; profili e storico sono in `webpanel/.state/`, esclusa da Git.
+Nessun encoder viene avviato automaticamente dopo il riavvio del servizio.
+
+Per il browser remoto: `ssh -N -L 18088:127.0.0.1:18088 encoder-server`.
+Per fermare il pannello: `docker stop --timeout 15 obe-webpanel`;
+per avviarlo usare `./webpanel/run.sh` dalla radice del checkout.
+
+La revisione integrata 0.5 aggiunge prove per lo storico separato dei canali,
+la sua riapertura dopo un riavvio e le porte riservate durante il recupero.
+Il 22 ottobre 2026 sono passati i 35 test API/processo e i 17 test del monitor,
+la prova simultanea PAL/1080i50 e il recupero reale dopo SIGKILL in HD.
+La prova SRT cifrata locale ha recuperato 412/412 pacchetti scartati dal proxy,
+senza scarti tardivi, con storico e rientro degli allarmi verificati.
+Queste prove non sostituiscono il collaudo prolungato o quello SRT su Internet.
+
+Vedi anche [gateway MPEG-TS remoto](ssh-contribution-gateway.md) e
+[collaudo HD con CSV/JSON](hd-pilot.md). UI verificata in Chromium a 390 e
+1440 px, cambio/creazione canale, fallback per URL inesistente e JPEG HD reale,
+senza overflow o errori console. Le immagini vengono inserite solo dopo il
+caricamento: risolta la segnalazione del controllo design, senza soppressioni.

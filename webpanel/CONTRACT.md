@@ -1,6 +1,6 @@
-# Webpanel 0.4 — contratto
+# Webpanel 0.5 — contratto
 
-Console italiana, scura, per un processo OBE gestito dal pannello. Python stdlib
+Console italiana, scura, per processi OBE gestiti per canale. Python stdlib
 e HTML/CSS/JS, font IBM Plex locali. Nessuna dipendenza nuova. Il servizio resta
 locale, accessibile da remoto mediante tunnel SSH; nessun intervento sui router.
 
@@ -70,7 +70,7 @@ ai processi OBE soltanto via ambiente, compresi i riavvii della stessa sessione.
   "encrypted": false,
   "metrics": {"cpu_percent": null, "memory_mb": null, "uptime_seconds": 0},
   "events": [{"id": 1, "time": "2026-10-21T20:00:00Z", "level": "info", "message": "Pannello pronto"}],
-  "version": {"panel": "0.4.0", "encoder": null}
+  "version": {"panel": "0.5.0", "encoder": null}
 }
 ```
 
@@ -225,3 +225,42 @@ campionati dal servizio anche senza client HTTP; i GET non consumano i contatori
   potenzialmente interpretabili come formula preceduti da un apostrofo.
 
 Soglie e runbook: [guida del pannello](../docs/webpanel.md#statistiche-srt-storico-e-allarmi).
+
+## Canali
+
+Fino a quattro canali con processo, profilo, revisione, eventi e telemetria
+indipendenti. `main` conserva stato e rotte esistenti; nessun autoavvio.
+
+- `GET /api/channels`: `{limit:4,channels:[{id,name,phase,process_alive}]}`.
+- `POST /api/channels`: `{name}` → 201 `{id,state}`; 409 se il limite è raggiunto.
+- `/api/channels/{id}/state|config|probe|start|stop|history`: stessi metodi e corpi
+  delle rotte originali, che restano alias di `main`.
+- Identificatori assegnati dal server: `main`, `channel-2`…`channel-4`.
+- Profili aggiuntivi in `.state/channels/{id}/config.json`; porte iniziali distinte.
+- Ogni canale avvia il proprio campionatore e conserva lo storico in
+  `.state/channels/{id}/monitoring.sqlite3` (`main` usa `.state/monitoring.sqlite3`).
+  Il cambio di canale svuota i dati visualizzati e ignora le risposte storico
+  del canale precedente. JSON e CSV esportano il solo canale selezionato.
+- Ingressi UDP/RTP/SRT listener con porte sovrapposte e destinazioni UDP già usate da un
+  canale attivo, anche in attesa di riavvio, sono rifiutati prima dell'avvio (409). Il limite di quattro
+  canali non certifica la capacità CPU della macchina.
+- La selezione UI non arresta la codifica; una bozza va salvata o ripristinata
+  prima del cambio. Un collegamento a un canale assente torna a `main`.
+
+## Preview per canale
+
+- `POST /api/channels/{id}/preview`, corpo `{}`: attiva la preview dell'uscita;
+  richiede codifica avviata (409), destinazione locale/multicast (422), FFmpeg (503).
+- `POST /api/channels/{id}/preview-stop`, `{}`: ferma solo la preview.
+- `GET /api/channels/{id}/preview-frame`: JPEG non memorizzabile in cache;
+  503 se assente/scaduto o il canale non è in codifica. Nessun URL fornito dal client.
+- Stato aggiuntivo `preview: {status, age_seconds, frame_id, pid}`; status
+  `idle|waiting|live|stale|error`. Età massima 3 s, JPEG massimo 1 MiB.
+- Stessi endpoint senza `/channels/{id}` come alias di `main`.
+- Avvio esplicito, nessun autoavvio e nessuna modifica alle uscite OBE.
+
+Il controllo delle porte considera `localport`, `localrtpport` e
+`localrtcpport` per i protocolli che li supportano; le query con chiavi duplicate
+sono rifiutate. Per l'uscita gli alias loopback localhost/127.0.0.1/::1 sono
+considerati la stessa destinazione. Gli alias DNS personalizzati non vengono
+risolti dal controllo: assegnare destinazioni esplicitamente distinte.
