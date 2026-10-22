@@ -80,7 +80,7 @@ class CaptureTests(unittest.TestCase):
 
 class RelayTests(unittest.TestCase):
     def test_windows_bootstrap_and_shell_boundary(self):
-        args = SimpleNamespace(source='PLAYOUT (PO_Uno4)', ndi_runtime=r'C:\NDI\runtime.dll',
+        args = SimpleNamespace(source='PLAYOUT (TEST)', ndi_runtime=r'C:\NDI\runtime.dll',
             ffmpeg=r'C:\ffmpeg\bin\ffmpeg.exe', field_order='tff', max_mbps=15, threads=2)
         command = relay.remote_command(args, 1024)
         self.assertNotIn('\n', command)
