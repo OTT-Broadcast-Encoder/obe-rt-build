@@ -1,6 +1,6 @@
 # Gateway MPEG-TS via SSH
 
-`gateway/ts_ssh.py` legge un ingresso UDP esistente su Uno4 mediante
+`gateway/ts_ssh.py` legge un ingresso UDP esistente su un server remoto mediante
 `/usr/bin/srt-live-transmit … file://con` e inoltra MPEG-TS all'encoder di prova
 locale. Non modifica il playout, non installa programmi sul server, non pubblica
 porte Docker e non modifica router. La tratta Internet usa **SSH su TCP**;
@@ -22,8 +22,8 @@ Per il canale **Contribuzione remota** nel container di test impostare:
 Avviare sullo stesso host Docker:
 
 ```sh
-python3 gateway/ts_ssh.py --host marco@185.67.236.4 \
-  --source udp://239.255.197.106:2079 --container obe-webpanel-next \
+python3 gateway/ts_ssh.py --host operator@contribution.example \
+  --source udp://239.255.0.1:5000 --container obe-webpanel-next \
   --udp-port 12030 --seconds 60 --max-mbps 20 \
   --report tests/.build/remote-contribution.json
 ```
@@ -59,8 +59,8 @@ forward UDP, retry limitati). Il collaudo remoto è esplicito e richiede un
 canale di test già creato e fermo:
 
 ```sh
-python3 tests/webpanel-remote-live.py --host marco@185.67.236.4 \
-  --source udp://239.255.197.106:2079 --control-socket /percorso/socket
+python3 tests/webpanel-remote-live.py --host operator@contribution.example \
+  --source udp://239.255.0.1:5000 --control-socket /percorso/socket
 ```
 
 Usa il servizio di test 18089, canale `channel-3` e container
