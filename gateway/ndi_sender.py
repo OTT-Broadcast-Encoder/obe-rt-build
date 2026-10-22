@@ -111,7 +111,7 @@ class BoundedPackets:
 
 
 def encoder_profile(srt_port, max_mbps=None, preset=None, crf=None, threads=None):
-    defaults = (200, 'faster', 8, 4) if srt_port is not None else (15, 'veryfast', 16, 2)
+    defaults = (200, 'veryfast', 8, 4) if srt_port is not None else (15, 'veryfast', 16, 2)
     max_mbps = defaults[0] if max_mbps is None else max_mbps
     preset = defaults[1] if preset is None else preset
     crf = defaults[2] if crf is None else crf

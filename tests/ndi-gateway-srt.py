@@ -30,11 +30,13 @@ class ListenerTests(unittest.TestCase):
             return command[command.index(option)+1]
         self.assertEqual((value(srt, '-preset'), value(srt, '-crf'), value(srt, '-maxrate'),
                           value(srt, '-threads'), value(srt, '-pix_fmt')),
-                         ('faster', '8', '200M', '4', 'yuv422p'))
+                         ('veryfast', '8', '200M', '4', 'yuv422p'))
         self.assertEqual((value(pipe, '-preset'), value(pipe, '-crf'), value(pipe, '-maxrate')),
                          ('veryfast', '16', '15M'))
         self.assertEqual(value(srt, '-flags'), '+ilme+ildct')
         self.assertIn('tff=1', value(srt, '-x264-params'))
+        self.assertEqual(value(srt, '-queue_size'), '60')
+        self.assertIn('listen_timeout=2000000', srt[-1])
         self.assertNotIn('-minrate', srt)
         self.assertNotIn('-b:v', srt)
 
@@ -93,7 +95,7 @@ class ListenerTests(unittest.TestCase):
                     return None
                 time.sleep(.3)
         try:
-            time.sleep(4)  # No receiver: raw capture must keep draining, with bounded buffering.
+            time.sleep(12)  # Join after several listener retries; capture must keep draining.
             self.assertIsNone(process.poll(), 'Listener exited while idle')
             first = probe(key, True)
             self.assertIsNotNone(first, 'Encrypted listener did not deliver media')
