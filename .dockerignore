@@ -3,3 +3,4 @@
 !docker/
 !docker/obe-builder/
 !docker/obe-builder/Dockerfile.ubuntu
+!docker/obe-builder/Dockerfile.current

@@ -17,6 +17,7 @@ vaapi/intel-*/
 vaapi/libva*
 libltntstools/
 ffmpeg/
+srt/
 json-c/
 libwebsockets/
 libzvbi/
@@ -25,6 +26,12 @@ obecli
 zimg/
 vapoursynth/
 vs-plugins/vapoursynth-*
+vaapi/libdrm-*.tar.xz
+tests/.build/
+tests/__pycache__/
+webpanel/.state/
+webpanel/__pycache__/
+gateway/__pycache__/
 
 # Local planning, deployment notes and tool metadata.
 [Rr][Oo][Aa][Dd][Mm][Aa][Pp]*.md

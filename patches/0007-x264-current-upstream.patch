@@ -1,0 +1,5114 @@
+diff --git a/.gitignore b/.gitignore
+index b1fcb221..5a2f7df8 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,5 +1,6 @@
+ *~
+ *.a
++*.d
+ *.diff
+ *.orig
+ *.rej
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index e1cd18e8..b2e4ca37 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -15,15 +15,17 @@ stages:
+ 
+ .variables-win32: &variables-win32
+     _TRIPLET: "i686-w64-mingw32"
++    _ARCH: "i686"
++    _OS: "mingw32"
+     _PLATFORMSUFFIX: ".exe"
+     _WRAPPER: "wine"
+-    _CONTRIB_URL: "https://artifacts.videolan.org/vlc/win32-llvm/"
+ 
+ .variables-win64: &variables-win64
+     _TRIPLET: "x86_64-w64-mingw32"
++    _ARCH: "x86_64"
++    _OS: "mingw32"
+     _PLATFORMSUFFIX: ".exe"
+     _WRAPPER: "wine"
+-    _CONTRIB_URL: "https://artifacts.videolan.org/vlc/win64-llvm/"
+ 
+ .variables-win-armv7: &variables-win-armv7
+     _TRIPLET: "armv7-w64-mingw32"
+@@ -37,22 +39,38 @@ stages:
+ 
+ .variables-macos-x86_64: &variables-macos-x86_64
+     _TRIPLET: "x86_64-apple-darwin19"
++    _ARCH: "x86_64"
++    _OS: "darwin"
+     _PLATFORMSUFFIX: ""
+     _WRAPPER: ""
+-    _CONTRIB_URL: "https://artifacts.videolan.org/vlc/macos-x86_64/"
+     _XCFLAGS: "-arch x86_64"
+     _XLDFLAGS: "-arch x86_64"
+     _BIN_PATH: /Users/videolanci/sandbox/bin
+ 
+ .variables-macos-arm64: &variables-macos-arm64
+     _TRIPLET: "aarch64-apple-darwin19"
++    _ARCH: "aarch64"
++    _OS: "darwin"
+     _PLATFORMSUFFIX: ""
+     _WRAPPER: ""
+-    _CONTRIB_URL: "https://artifacts.videolan.org/vlc/macos-arm64/"
+     _XCFLAGS: "-arch arm64"
+     _XLDFLAGS: "-arch arm64"
+     _BIN_PATH: /Users/videolanci/sandbox/bin
+ 
++.variables-android-arm: &variables-android-arm
++    _TRIPLET: "arm-linux-androideabi"
++    _CLANG_TRIPLET: "armv7a-linux-androideabi"
++    _ANDROID_VERSION: "21"
++    _PLATFORMSUFFIX: ""
++    _WRAPPER: ""
++
++.variables-android-aarch64: &variables-android-aarch64
++    _TRIPLET: "aarch64-linux-android"
++    _CLANG_TRIPLET: "aarch64-linux-android"
++    _ANDROID_VERSION: "21"
++    _PLATFORMSUFFIX: ""
++    _WRAPPER: ""
++
+ .build:
+     stage: build
+     script: |
+@@ -61,7 +79,7 @@ stages:
+         export PKG_CONFIG_LIBDIR=${LOCAL_INSTALL_DIR}/lib/pkgconfig
+         git clone --depth 1 --branch master https://git.ffmpeg.org/ffmpeg.git ffmpeg
+         cd ffmpeg
+-        ./configure --prefix="${LOCAL_INSTALL_DIR}" --enable-pic --disable-debug --extra-ldflags="-static" --disable-programs --disable-doc --disable-avdevice --disable-postproc --disable-avfilter --disable-network --disable-encoders --disable-muxers
++        ./configure --prefix="${LOCAL_INSTALL_DIR}" --enable-pic --disable-debug --disable-programs --disable-doc --disable-avdevice --disable-avfilter --disable-network --disable-encoders --disable-muxers --extra-ldflags="-static"
+         make -j$(getconf _NPROCESSORS_ONLN)
+         make -j$(getconf _NPROCESSORS_ONLN) install
+         cd ..
+@@ -106,12 +124,12 @@ build-debian-aarch64:
+         LOCAL_INSTALL_DIR=`pwd`/${_TRIPLET}
+         export PKGCONFIG=pkg-config
+         export PKG_CONFIG_LIBDIR=${LOCAL_INSTALL_DIR}/lib/pkgconfig
+-        curl -f -o vlc-contrib.txt ${_CONTRIB_URL}
+-        CONTRIB_NAME=$(sed -n -e "s@.*href=\"\(vlc-contrib-${_TRIPLET}-[^\"]*\.tar\.bz2\)\".*@\1@p" vlc-contrib.txt | sed -n -e '1p')
+-        curl -f -o vlc-contrib-${_TRIPLET}-latest.tar.bz2 ${_CONTRIB_URL}${CONTRIB_NAME}
+-        bunzip2 vlc-contrib-${_TRIPLET}-latest.tar.bz2
+-        tar xvf vlc-contrib-${_TRIPLET}-latest.tar
+-        perl -pi -e "s'@@CONTRIB_PREFIX@@'$(sed -e "s/'/\\\\'/g" <<< "${LOCAL_INSTALL_DIR}")'g" ${PKG_CONFIG_LIBDIR}/*.pc
++        git clone --depth 1 --branch master https://git.ffmpeg.org/ffmpeg.git ffmpeg
++        cd ffmpeg
++        ./configure --prefix="${LOCAL_INSTALL_DIR}" --enable-cross-compile --arch="${_ARCH}" --target-os="${_OS}" --cross-prefix="${_TRIPLET}-" --enable-pic --disable-debug --disable-programs --disable-doc --disable-avdevice --disable-avfilter --disable-network --disable-encoders --disable-muxers
++        make -j$(getconf _NPROCESSORS_ONLN)
++        make -j$(getconf _NPROCESSORS_ONLN) install
++        cd ..
+         git clone --depth 1 --branch master https://github.com/l-smash/l-smash.git lsmash
+         cd lsmash
+         ./configure --prefix="${LOCAL_INSTALL_DIR}" --target-os="${_TRIPLET}" --cross-prefix="${_TRIPLET}-"
+@@ -155,12 +173,12 @@ build-llvm-mingw-aarch64:
+         export PATH="${_BIN_PATH}:$PATH"
+         LOCAL_INSTALL_DIR=`pwd`/${_TRIPLET}
+         export PKG_CONFIG_LIBDIR=${LOCAL_INSTALL_DIR}/lib/pkgconfig
+-        curl -f -o vlc-contrib.txt ${_CONTRIB_URL}
+-        CONTRIB_NAME=$(sed -n -e "s@.*href=\"\(vlc-contrib-${_TRIPLET}-[^\"]*\.tar\.bz2\)\".*@\1@p" vlc-contrib.txt | sed -n -e '1p')
+-        curl -f -o vlc-contrib-${_TRIPLET}-latest.tar.bz2 ${_CONTRIB_URL}${CONTRIB_NAME}
+-        bunzip2 vlc-contrib-${_TRIPLET}-latest.tar.bz2
+-        tar xvf vlc-contrib-${_TRIPLET}-latest.tar
+-        perl -pi -e "s'@@CONTRIB_PREFIX@@'$(sed -e "s/'/\\\\'/g" <<< "${LOCAL_INSTALL_DIR}")'g" ${PKG_CONFIG_LIBDIR}/*.pc
++        git clone --depth 1 --branch master https://git.ffmpeg.org/ffmpeg.git ffmpeg
++        cd ffmpeg
++        ./configure --prefix="${LOCAL_INSTALL_DIR}" --enable-cross-compile --arch="${_ARCH}" --target-os="${_OS}" --extra-cflags="${_XCFLAGS}" --extra-ldflags="${_XLDFLAGS}" --enable-pic --disable-debug --disable-programs --disable-doc --disable-avdevice --disable-avfilter --disable-network --disable-encoders --disable-muxers
++        make -j$(getconf _NPROCESSORS_ONLN)
++        make -j$(getconf _NPROCESSORS_ONLN) install
++        cd ..
+         git clone --depth 1 --branch master https://github.com/l-smash/l-smash.git lsmash
+         cd lsmash
+         ./configure --prefix="${LOCAL_INSTALL_DIR}" --target-os="${_TRIPLET}" --extra-cflags="${_XCFLAGS}" --extra-ldflags="${_XLDFLAGS}"
+@@ -184,6 +202,25 @@ build-macos-arm64:
+         - monterey
+     variables: *variables-macos-arm64
+ 
++.build-android:
++    extends: .build
++    image: registry.videolan.org/vlc-debian-android:20241118101328
++    tags:
++        - docker
++        - amd64
++    script: |
++        set -x
++        CC=${_CLANG_TRIPLET}${_ANDROID_VERSION}-clang AR=llvm-ar RANLIB=llvm-ranlib STRIP=llvm-strip PKGCONFIG=pkg-config ./configure --host="${_TRIPLET}" --enable-pic --enable-strip
++        make -j$(getconf _NPROCESSORS_ONLN) x264 checkasm
++
++build-android-arm:
++    extends: .build-android
++    variables: *variables-android-arm
++
++build-android-aarch64:
++    extends: .build-android
++    variables: *variables-android-aarch64
++
+ .test: &test
+     stage: test
+     script: |
+diff --git a/Makefile b/Makefile
+index 12c04f05..6856d43d 100644
+--- a/Makefile
++++ b/Makefile
+@@ -245,6 +245,25 @@ endif
+ OBJCHK += tools/checkasm-aarch64.o
+ endif
+ 
++# RISCV64 RVV optims
++ifeq ($(SYS_ARCH),RISCV64)
++ifneq ($(findstring HAVE_RVV 1, $(CONFIG)),)
++SRCASM_X =
++
++SRCS_X  +=
++
++OBJASM +=
++ifneq ($(findstring HAVE_BITDEPTH8 1, $(CONFIG)),)
++OBJASM += $(SRCASM_X:%.S=%-8.o)
++endif
++ifneq ($(findstring HAVE_BITDEPTH10 1, $(CONFIG)),)
++OBJASM += $(SRCASM_X:%.S=%-10.o)
++endif
++
++OBJCHK +=
++endif
++endif
++
+ # MSA optims
+ ifeq ($(SYS_ARCH),MIPS)
+ ifneq ($(findstring HAVE_MSA 1, $(CONFIG)),)
+@@ -362,39 +381,46 @@ example$(EXE): $(OBJEXAMPLE) $(LIBX264)
+ $(OBJS) $(OBJSO): CFLAGS += $(CFLAGSSO)
+ $(OBJCLI): CFLAGS += $(CFLAGSCLI)
+ 
+-$(OBJS) $(OBJASM) $(OBJSO) $(OBJCLI) $(OBJCHK) $(OBJCHK_8) $(OBJCHK_10) $(OBJEXAMPLE): .depend
++ALLOBJS = $(OBJS) $(OBJASM) $(OBJSO) $(OBJCLI) $(OBJCHK) $(OBJCHK_8) $(OBJCHK_10) $(OBJEXAMPLE)
++$(ALLOBJS): $(GENERATED)
+ 
+ %.o: %.c
+-	$(CC) $(CFLAGS) -c $< $(CC_O)
++	$(DEPCMD)
++	$(CC) $(CFLAGS) -c $< $(CC_O) $(DEPFLAGS)
+ 
+ %-8.o: %.c
+-	$(CC) $(CFLAGS) -c $< $(CC_O) -DHIGH_BIT_DEPTH=0 -DBIT_DEPTH=8
++	$(DEPCMD)
++	$(CC) $(CFLAGS) -c $< $(CC_O) $(DEPFLAGS) -DHIGH_BIT_DEPTH=0 -DBIT_DEPTH=8
+ 
+ %-10.o: %.c
+-	$(CC) $(CFLAGS) -c $< $(CC_O) -DHIGH_BIT_DEPTH=1 -DBIT_DEPTH=10
++	$(DEPCMD)
++	$(CC) $(CFLAGS) -c $< $(CC_O) $(DEPFLAGS) -DHIGH_BIT_DEPTH=1 -DBIT_DEPTH=10
+ 
+ %.o: %.asm common/x86/x86inc.asm common/x86/x86util.asm
+-	$(AS) $(ASFLAGS) -o $@ $<
++	$(AS) $(ASFLAGS) -o $@ $< -MD $(@:.o=.d)
+ 	-@ $(if $(STRIP), $(STRIP) -x $@) # delete local/anonymous symbols, so they don't show up in oprofile
+ 
+ %-8.o: %.asm common/x86/x86inc.asm common/x86/x86util.asm
+-	$(AS) $(ASFLAGS) -o $@ $< -DBIT_DEPTH=8 -Dprivate_prefix=x264_8
++	$(AS) $(ASFLAGS) -o $@ $< -MD $(@:.o=.d) -DBIT_DEPTH=8 -Dprivate_prefix=x264_8
+ 	-@ $(if $(STRIP), $(STRIP) -x $@)
+ 
+ %-10.o: %.asm common/x86/x86inc.asm common/x86/x86util.asm
+-	$(AS) $(ASFLAGS) -o $@ $< -DBIT_DEPTH=10 -Dprivate_prefix=x264_10
++	$(AS) $(ASFLAGS) -o $@ $< -MD $(@:.o=.d) -DBIT_DEPTH=10 -Dprivate_prefix=x264_10
+ 	-@ $(if $(STRIP), $(STRIP) -x $@)
+ 
+ %.o: %.S
+-	$(AS) $(ASFLAGS) -o $@ $<
++	$(DEPCMD)
++	$(AS) $(ASFLAGS) -o $@ $< $(DEPFLAGS)
+ 	-@ $(if $(STRIP), $(STRIP) -x $@) # delete local/anonymous symbols, so they don't show up in oprofile
+ 
+ %-8.o: %.S
+-	$(AS) $(ASFLAGS) -o $@ $< -DHIGH_BIT_DEPTH=0 -DBIT_DEPTH=8
++	$(DEPCMD)
++	$(AS) $(ASFLAGS) -o $@ $< $(DEPFLAGS) -DHIGH_BIT_DEPTH=0 -DBIT_DEPTH=8
+ 	-@ $(if $(STRIP), $(STRIP) -x $@)
+ 
+ %-10.o: %.S
+-	$(AS) $(ASFLAGS) -o $@ $< -DHIGH_BIT_DEPTH=1 -DBIT_DEPTH=10
++	$(DEPCMD)
++	$(AS) $(ASFLAGS) -o $@ $< $(DEPFLAGS) -DHIGH_BIT_DEPTH=1 -DBIT_DEPTH=10
+ 	-@ $(if $(STRIP), $(STRIP) -x $@)
+ 
+ %.dll.o: %.rc x264.h
+@@ -403,34 +429,19 @@ $(OBJS) $(OBJASM) $(OBJSO) $(OBJCLI) $(OBJCHK) $(OBJCHK_8) $(OBJCHK_10) $(OBJEXA
+ %.o: %.rc x264.h x264res.manifest
+ 	$(RC) $(RCFLAGS)$@ $<
+ 
+-.depend: config.mak $(GENERATED)
+-	@rm -f .depend
+-	@echo 'dependency file generation...'
+-ifeq ($(COMPILER),CL)
+-	@$(foreach SRC, $(addprefix $(SRCPATH)/, $(SRCS) $(SRCCLI) $(SRCSO) $(SRCEXAMPLE)), $(SRCPATH)/tools/msvsdepend.sh "$(CC)" "$(CFLAGS)" "$(SRC)" "$(SRC:$(SRCPATH)/%.c=%.o)" 1>> .depend;)
+-ifneq ($(findstring HAVE_BITDEPTH8 1, $(CONFIG)),)
+-	@$(foreach SRC, $(addprefix $(SRCPATH)/, $(SRCS_X) $(SRCS_8) $(SRCCLI_X) $(SRCCHK_X)), $(SRCPATH)/tools/msvsdepend.sh "$(CC)" "$(CFLAGS)" "$(SRC)" "$(SRC:$(SRCPATH)/%.c=%-8.o)" 1>> .depend;)
+-endif
+-ifneq ($(findstring HAVE_BITDEPTH10 1, $(CONFIG)),)
+-	@$(foreach SRC, $(addprefix $(SRCPATH)/, $(SRCS_X) $(SRCCLI_X) $(SRCCHK_X)), $(SRCPATH)/tools/msvsdepend.sh "$(CC)" "$(CFLAGS)" "$(SRC)" "$(SRC:$(SRCPATH)/%.c=%-10.o)" 1>> .depend;)
+-endif
+-else
+-	@$(foreach SRC, $(addprefix $(SRCPATH)/, $(SRCS) $(SRCCLI) $(SRCSO) $(SRCEXAMPLE)), $(CC) $(CFLAGS) $(SRC) $(DEPMT) $(SRC:$(SRCPATH)/%.c=%.o) $(DEPMM) 1>> .depend;)
+-ifneq ($(findstring HAVE_BITDEPTH8 1, $(CONFIG)),)
+-	@$(foreach SRC, $(addprefix $(SRCPATH)/, $(SRCS_X) $(SRCS_8) $(SRCCLI_X) $(SRCCHK_X)), $(CC) $(CFLAGS) $(SRC) $(DEPMT) $(SRC:$(SRCPATH)/%.c=%-8.o) $(DEPMM) 1>> .depend;)
+-endif
+-ifneq ($(findstring HAVE_BITDEPTH10 1, $(CONFIG)),)
+-	@$(foreach SRC, $(addprefix $(SRCPATH)/, $(SRCS_X) $(SRCCLI_X) $(SRCCHK_X)), $(CC) $(CFLAGS) $(SRC) $(DEPMT) $(SRC:$(SRCPATH)/%.c=%-10.o) $(DEPMM) 1>> .depend;)
+-endif
+-endif
+-
+ config.mak:
+ 	./configure
+ 
+-depend: .depend
+-ifneq ($(wildcard .depend),)
+-include .depend
+-endif
++# This is kept as a no-op
++depend:
++	@echo "make depend" is handled implicitly now
++
++-include $(wildcard $(ALLOBJS:.o=.d))
++
++# Dummy rule to avoid failing, if the dependency files specify dependencies on
++# a removed .h file.
++%.h:
++	@:
+ 
+ OBJPROF = $(OBJS) $(OBJSO) $(OBJCLI)
+ # These should cover most of the important codepaths
+@@ -465,11 +476,12 @@ endif
+ endif
+ 
+ clean:
+-	rm -f $(OBJS) $(OBJASM) $(OBJCLI) $(OBJSO) $(GENERATED) .depend TAGS
++	rm -f $(OBJS) $(OBJASM) $(OBJCLI) $(OBJSO) $(GENERATED) TAGS
+ 	rm -f $(SONAME) *.a *.lib *.exp *.pdb x264$(EXE) x264_lookahead.clbin
+ 	rm -f checkasm8$(EXE) checkasm10$(EXE) $(OBJCHK) $(OBJCHK_8) $(OBJCHK_10)
+ 	rm -f example$(EXE) $(OBJEXAMPLE)
+ 	rm -f $(OBJPROF:%.o=%.gcda) $(OBJPROF:%.o=%.gcno) *.dyn pgopti.dpi pgopti.dpi.lock *.pgd *.pgc
++	rm -f $(ALLOBJS:%.o=%.d)
+ 
+ distclean: clean
+ 	rm -f config.mak x264_config.h config.h config.log x264.pc x264.def
+diff --git a/autocomplete.c b/autocomplete.c
+index 1fc33b09..b59c521d 100644
+--- a/autocomplete.c
++++ b/autocomplete.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * autocomplete: x264cli shell autocomplete
+  *****************************************************************************
+- * Copyright (C) 2018-2024 x264 project
++ * Copyright (C) 2018-2025 x264 project
+  *
+  * Authors: Henrik Gramner <henrik@gramner.com>
+  *
+diff --git a/common/aarch64/asm-offsets.c b/common/aarch64/asm-offsets.c
+index ec669a4b..26eb813e 100644
+--- a/common/aarch64/asm-offsets.c
++++ b/common/aarch64/asm-offsets.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * asm-offsets.c: check asm offsets for aarch64
+  *****************************************************************************
+- * Copyright (C) 2014-2024 x264 project
++ * Copyright (C) 2014-2025 x264 project
+  *
+  * Authors: Janne Grunau <janne-x264@jannau.net>
+  *
+diff --git a/common/aarch64/asm-offsets.h b/common/aarch64/asm-offsets.h
+index 21654690..a0ff22ee 100644
+--- a/common/aarch64/asm-offsets.h
++++ b/common/aarch64/asm-offsets.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * asm-offsets.h: asm offsets for aarch64
+  *****************************************************************************
+- * Copyright (C) 2014-2024 x264 project
++ * Copyright (C) 2014-2025 x264 project
+  *
+  * Authors: Janne Grunau <janne-x264@jannau.net>
+  *
+diff --git a/common/aarch64/asm.S b/common/aarch64/asm.S
+index baec521d..99b92f5c 100644
+--- a/common/aarch64/asm.S
++++ b/common/aarch64/asm.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * asm.S: AArch64 utility macros
+  *****************************************************************************
+- * Copyright (C) 2008-2024 x264 project
++ * Copyright (C) 2008-2025 x264 project
+  *
+  * Authors: Mans Rullgard <mans@mansr.com>
+  *          David Conrad <lessen42@gmail.com>
+@@ -66,6 +66,46 @@
+ #   define FUNC #
+ #endif
+ 
++        .arch AS_ARCH_LEVEL
++#if HAVE_AS_ARCHEXT_DOTPROD_DIRECTIVE
++#define ENABLE_DOTPROD  .arch_extension dotprod
++#define DISABLE_DOTPROD .arch_extension nodotprod
++#else
++#define ENABLE_DOTPROD
++#define DISABLE_DOTPROD
++#endif
++#if HAVE_AS_ARCHEXT_I8MM_DIRECTIVE
++#define ENABLE_I8MM  .arch_extension i8mm
++#define DISABLE_I8MM .arch_extension noi8mm
++#else
++#define ENABLE_I8MM
++#define DISABLE_I8MM
++#endif
++#if HAVE_AS_ARCHEXT_SVE_DIRECTIVE
++#define ENABLE_SVE  .arch_extension sve
++#define DISABLE_SVE .arch_extension nosve
++#else
++#define ENABLE_SVE
++#define DISABLE_SVE
++#endif
++#if HAVE_AS_ARCHEXT_SVE2_DIRECTIVE
++#define ENABLE_SVE2  .arch_extension sve2
++#define DISABLE_SVE2 .arch_extension nosve2
++#else
++#define ENABLE_SVE2
++#define DISABLE_SVE2
++#endif
++
++/* If we do support the .arch_extension directives, disable support for all
++ * the extensions that we may use, in case they were implicitly enabled by
++ * the .arch level. This makes it clear if we try to assemble an instruction
++ * from an unintended extension set; we only allow assmbling such instructions
++ * within regions where we explicitly enable those extensions. */
++DISABLE_DOTPROD
++DISABLE_I8MM
++DISABLE_SVE
++DISABLE_SVE2
++
+ .macro  function name, export=0, align=2
+     .macro endfunc
+ .if \export
+diff --git a/common/aarch64/bitstream-a.S b/common/aarch64/bitstream-a.S
+index c7e06b60..55c171e9 100644
+--- a/common/aarch64/bitstream-a.S
++++ b/common/aarch64/bitstream-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * bitstream-a.S: aarch64 bitstream functions
+  *****************************************************************************
+- * Copyright (C) 2014-2024 x264 project
++ * Copyright (C) 2014-2025 x264 project
+  *
+  * Authors: Janne Grunau <janne-x264@jannau.net>
+  *
+diff --git a/common/aarch64/bitstream.h b/common/aarch64/bitstream.h
+index c366f36f..b2f4cb8d 100644
+--- a/common/aarch64/bitstream.h
++++ b/common/aarch64/bitstream.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * bitstream.h: aarch64 bitstream functions
+  *****************************************************************************
+- * Copyright (C) 2017-2024 x264 project
++ * Copyright (C) 2017-2025 x264 project
+  *
+  * Authors: Anton Mitrofanov <BugMaster@narod.ru>
+  *
+diff --git a/common/aarch64/cabac-a.S b/common/aarch64/cabac-a.S
+index 3e2f7fad..1e02f9d6 100644
+--- a/common/aarch64/cabac-a.S
++++ b/common/aarch64/cabac-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * cabac-a.S: aarch64 cabac
+  *****************************************************************************
+- * Copyright (C) 2014-2024 x264 project
++ * Copyright (C) 2014-2025 x264 project
+  *
+  * Authors: Janne Grunau <janne-x264@jannau.net>
+  *
+diff --git a/common/aarch64/dct-a-common.S b/common/aarch64/dct-a-common.S
+index 60579339..5e4e73c5 100644
+--- a/common/aarch64/dct-a-common.S
++++ b/common/aarch64/dct-a-common.S
+@@ -1,7 +1,7 @@
+ /****************************************************************************
+  * dct-a-common.S: aarch64 transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+diff --git a/common/aarch64/dct-a-sve.S b/common/aarch64/dct-a-sve.S
+index 9b94b73e..d32c599d 100644
+--- a/common/aarch64/dct-a-sve.S
++++ b/common/aarch64/dct-a-sve.S
+@@ -1,7 +1,7 @@
+ /****************************************************************************
+  * dct-a-sve.S: aarch64 transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Chen <david.chen@myais.com.cn>
+  *
+@@ -26,7 +26,7 @@
+ #include "asm.S"
+ #include "dct-a-common.S"
+ 
+-.arch armv8-a+sve
++ENABLE_SVE
+ 
+ function sub4x4_dct_sve, export=1
+     mov         x3, #FENC_STRIDE
+diff --git a/common/aarch64/dct-a-sve2.S b/common/aarch64/dct-a-sve2.S
+index ebe3969e..f4d486a3 100644
+--- a/common/aarch64/dct-a-sve2.S
++++ b/common/aarch64/dct-a-sve2.S
+@@ -1,7 +1,7 @@
+ /****************************************************************************
+  * dct-a-sve2.S: aarch64 transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Chen <david.chen@myais.com.cn>
+  *
+@@ -26,7 +26,8 @@
+ #include "asm.S"
+ #include "dct-a-common.S"
+ 
+-.arch armv8-a+sve+sve2
++ENABLE_SVE
++ENABLE_SVE2
+ 
+ function add4x4_idct_sve2, export=1
+     mov         x2, #FDEC_STRIDE
+diff --git a/common/aarch64/dct-a.S b/common/aarch64/dct-a.S
+index 8d7a09b2..0c85d844 100644
+--- a/common/aarch64/dct-a.S
++++ b/common/aarch64/dct-a.S
+@@ -1,7 +1,7 @@
+ /****************************************************************************
+  * dct-a.S: aarch64 transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+diff --git a/common/aarch64/dct.h b/common/aarch64/dct.h
+index 40066cb6..39623da7 100644
+--- a/common/aarch64/dct.h
++++ b/common/aarch64/dct.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * dct.h: aarch64 transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+diff --git a/common/aarch64/deblock-a-common.S b/common/aarch64/deblock-a-common.S
+index c871cb73..2b5d5580 100644
+--- a/common/aarch64/deblock-a-common.S
++++ b/common/aarch64/deblock-a-common.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * deblock-a-common.S: aarch64 deblocking
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: Mans Rullgard <mans@mansr.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+diff --git a/common/aarch64/deblock-a-sve.S b/common/aarch64/deblock-a-sve.S
+index e38efc9c..15ea7d06 100644
+--- a/common/aarch64/deblock-a-sve.S
++++ b/common/aarch64/deblock-a-sve.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * deblock-a-sve.S: aarch64 deblocking
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Chen <david.chen@myais.com.cn>
+  *
+@@ -26,7 +26,7 @@
+ #include "asm.S"
+ #include "deblock-a-common.S"
+ 
+-.arch armv8-a+sve
++ENABLE_SVE
+ 
+ .macro h264_loop_filter_chroma_sve
+     ptrue           p0.b, vl16
+diff --git a/common/aarch64/deblock-a.S b/common/aarch64/deblock-a.S
+index 718fe155..803d6faf 100644
+--- a/common/aarch64/deblock-a.S
++++ b/common/aarch64/deblock-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * deblock.S: aarch64 deblocking
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: Mans Rullgard <mans@mansr.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+diff --git a/common/aarch64/deblock.h b/common/aarch64/deblock.h
+index e4c60e34..d9112fed 100644
+--- a/common/aarch64/deblock.h
++++ b/common/aarch64/deblock.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * deblock.h: aarch64 deblocking
+  *****************************************************************************
+- * Copyright (C) 2017-2024 x264 project
++ * Copyright (C) 2017-2025 x264 project
+  *
+  * Authors: Anton Mitrofanov <BugMaster@narod.ru>
+  *
+diff --git a/common/aarch64/mc-a-common.S b/common/aarch64/mc-a-common.S
+index fa620ecc..5099d7ed 100644
+--- a/common/aarch64/mc-a-common.S
++++ b/common/aarch64/mc-a-common.S
+@@ -1,7 +1,7 @@
+ /****************************************************************************
+  * mc-a-common.S: aarch64 motion compensation
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+diff --git a/common/aarch64/mc-a-sve.S b/common/aarch64/mc-a-sve.S
+index 632aa7b7..ffb752ec 100644
+--- a/common/aarch64/mc-a-sve.S
++++ b/common/aarch64/mc-a-sve.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc-a-sve.S: aarch64 motion compensation
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Chen <david.chen@myais.com.cn>
+  *
+@@ -26,7 +26,7 @@
+ #include "asm.S"
+ #include "mc-a-common.S"
+ 
+-.arch armv8-a+sve
++ENABLE_SVE
+ 
+ #if BIT_DEPTH == 8
+ 
+diff --git a/common/aarch64/mc-a.S b/common/aarch64/mc-a.S
+index 9c52d045..e9fcd1ac 100644
+--- a/common/aarch64/mc-a.S
++++ b/common/aarch64/mc-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc.S: aarch64 motion compensation
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+@@ -1309,32 +1309,29 @@ function hpel_filter_neon, export=1
+     add         v24.8h, v24.8h, v2.8h
+ 
+     sub         v4.8h,  v4.8h,  v5.8h   // a-b
+-    sub         v5.8h,  v5.8h,  v6.8h   // b-c
++    sub         v5.8h,  v6.8h,  v5.8h   // c-b
+ 
+     sub         v22.8h, v22.8h, v23.8h  // a-b
+-    sub         v23.8h, v23.8h, v24.8h  // b-c
+-
+-    sshr        v4.8h,  v4.8h,  #2      // (a-b)/4
+-    sshr        v22.8h, v22.8h, #2      // (a-b)/4
+-    sub         v4.8h,  v4.8h,  v5.8h   // (a-b)/4-b+c
+-    sub         v22.8h, v22.8h, v23.8h  // (a-b)/4-b+c
+-    sshr        v4.8h,  v4.8h,  #2      // ((a-b)/4-b+c)/4
+-    sshr        v22.8h, v22.8h, #2      // ((a-b)/4-b+c)/4
+-    add         v4.8h,  v4.8h,  v6.8h   // ((a-b)/4-b+c)/4+c = (a-5*b+20*c)/16
+-    add         v22.8h, v22.8h, v24.8h  // ((a-b)/4-b+c)/4+c = (a-5*b+20*c)/16
+-
+-    sqrshrun    v4.8b,   v4.8h,   #6
+-    ld1         {v28.16b}, [x7],   #16  // src[16:31]
++    sub         v23.8h, v24.8h, v23.8h  // c-b
++
++    ssra        v5.8h,  v4.8h,  #2      // (a-b)/4-b+c
++    ssra        v23.8h, v22.8h, #2      // (a-b)/4-b+c
++
++    ssra        v6.8h,  v5.8h,  #2      // ((a-b)/4-b+c)/4+c = (a-5*b+20*c)/16
++    ssra        v24.8h, v23.8h, #2      // ((a-b)/4-b+c)/4+c = (a-5*b+20*c)/16
++
++    sqrshrun    v6.8b,   v6.8h,   #6
++    ld1         {v28.16b}, [x7],  #16   // src[16:31]
+     mov         v0.16b,  v2.16b
+     ext         v23.16b, v7.16b,  v18.16b, #15
+-    sqrshrun2   v4.16b,  v22.8h,  #6
++    sqrshrun2   v6.16b,  v24.8h,  #6
+     mov         v1.16b,  v3.16b
+     ext         v22.16b, v7.16b,  v18.16b, #14
+     ext         v24.16b, v18.16b, v28.16b, #1
+     ext         v25.16b, v18.16b, v28.16b, #2
+     ext         v26.16b, v18.16b, v28.16b, #3
+ 
+-    st1         {v4.16b}, [x2], #16
++    st1         {v6.16b}, [x2], #16
+     b.gt        2b
+ 
+     subs        w6,  w6,  #1
+@@ -1425,6 +1422,164 @@ function frame_init_lowres_core_neon, export=1
+     ret
+ endfunc
+ 
++#if HAVE_I8MM
++ENABLE_I8MM
++
++const hpel_filter
++.byte 1, -5, 20, 20, -5, 1, 0, 0
++endconst
++
++const hpel_permute_tbl
++.byte 0,  1,  2,  3,  1,  2,  3,  4,  2,  3,  4,  5,  3,  4,  5,  6
++.byte 4,  5,  6,  7,  5,  6,  7,  8,  6,  7,  8,  9,  7,  8,  9, 10
++.byte 8,  9, 10, 11,  9, 10, 11, 12, 10, 11, 12, 13, 11, 12, 13, 14
++endconst
++
++// void hpel_filter( pixel *dsth, pixel *dstv, pixel *dstc, pixel *src,
++//                   intptr_t stride, int width, int height, int16_t *buf )
++function hpel_filter_neon_i8mm, export=1
++    movrel      x14, hpel_permute_tbl
++    ld1         {v22.16b - v24.16b}, [x14]
++    movrel      x8, hpel_filter
++    ld1         {v28.8b}, [x8]
++    sxtl        v0.8h, v28.8b
++
++    add         w15, w5, #3
++    mov         x10, x0
++    sub         x11, x1, #2
++    mov         x12, x2
++    sub         x13, x3, #2             // armv8 handles unaligned loads
++
++    movi        v30.16b,  #5
++    movi        v31.16b,  #20
++1:
++    mov         x3,  x13
++    mov         x2,  x12
++    mov         x1,  x11
++    mov         x0,  x10
++    mov         x5,  x15                // restore width
++
++    add         x7,  x3,  #8            // src pointer next 16b for horiz filter
++    sub         x3,  x3,  x4,  lsl #1   // src - 2*stride
++
++    add         x9,  x3,  x15           // holds src - 2*stride + width
++
++    ld1         {v16.16b}, [x3], x4     // src-2*stride[0:15]
++    ld1         {v17.16b}, [x3], x4     // src-1*stride[0:15]
++    ld1         {v18.16b}, [x3], x4     // src+0*stride[0:15]
++    ld1         {v19.16b}, [x3], x4     // src+1*stride[0:15]
++    ld1         {v20.16b}, [x3], x4     // src+2*stride[0:15]
++    ld1         {v21.16b}, [x3], x4     // src+3*stride[0:15]
++
++    ld1         {v29.16b}, [x7], #16    // src[16:31]
++
++    uaddl       v1.8h,   v16.8b,  v21.8b
++    umlsl       v1.8h,   v17.8b,  v30.8b
++    umlal       v1.8h,   v18.8b,  v31.8b
++    umlal       v1.8h,   v19.8b,  v31.8b
++    umlsl       v1.8h,   v20.8b,  v30.8b
++2:
++
++    subs        x5,  x5,  #16
++    sub         x3,  x9,  x5            // src - 2*stride += 16
++
++    movi        v3.16b, #0
++    movi        v4.16b, #0
++    movi        v5.16b, #0
++    movi        v6.16b, #0
++    tbl         v25.16b, {v18.16b}, v22.16b
++    tbl         v26.16b, {v18.16b}, v23.16b
++    tbl         v27.16b, {v18.16b}, v24.16b
++    usdot       v3.4s, v25.16b, v28.4b[0]
++    usdot       v3.4s, v26.16b, v28.4b[1]
++    usdot       v4.4s, v26.16b, v28.4b[0]
++    usdot       v4.4s, v27.16b, v28.4b[1]
++    tbl         v25.16b, {v29.16b}, v22.16b
++    tbl         v26.16b, {v29.16b}, v23.16b
++    tbl         v27.16b, {v29.16b}, v24.16b
++    uzp1        v7.8h, v3.8h, v4.8h
++    usdot       v5.4s, v25.16b, v28.4b[0]
++    usdot       v5.4s, v26.16b, v28.4b[1]
++    usdot       v6.4s, v26.16b, v28.4b[0]
++    usdot       v6.4s, v27.16b, v28.4b[1]
++    uzp1        v6.8h, v5.8h, v6.8h
++
++    sqrshrun    v7.8b, v7.8h, #5
++    sqrshrun2   v7.16b, v6.8h, #5
++    st1         {v7.16b}, [x0], #16
++
++    sqrshrun    v6.8b,  v1.8h,   #5
++    uaddl2      v2.8h,  v16.16b, v21.16b
++    umlsl2      v2.8h,  v17.16b, v30.16b
++    umlal2      v2.8h,  v18.16b, v31.16b
++    umlal2      v2.8h,  v19.16b, v31.16b
++    umlsl2      v2.8h,  v20.16b, v30.16b
++    sqrshrun2   v6.16b, v2.8h,   #5
++    st1         {v6.16b},  [x1],  #16
++
++    ld1         {v16.16b}, [x3],  x4    // src-2*stride[0:15]
++    ld1         {v17.16b}, [x3],  x4    // src-1*stride[0:15]
++    ld1         {v18.16b}, [x3],  x4    // src+0*stride[0:15]
++    ld1         {v19.16b}, [x3],  x4    // src+1*stride[0:15]
++    ld1         {v20.16b}, [x3],  x4    // src+2*stride[0:15]
++    ld1         {v21.16b}, [x3],  x4    // src+3*stride[0:15]
++    ld1         {v29.16b}, [x7], #16    // src[16:31]
++
++    ext         v3.16b, v1.16b, v2.16b, #2
++    ext         v4.16b, v1.16b, v2.16b, #4
++    ext         v5.16b, v1.16b, v2.16b, #6
++    ext         v6.16b, v1.16b, v2.16b, #8
++    ext         v7.16b, v1.16b, v2.16b, #10
++
++    add         v7.8h, v1.8h, v7.8h     // filter = 1
++    add         v6.8h, v3.8h, v6.8h     // filter = -5
++    add         v5.8h, v4.8h, v5.8h     // filter = 20
++
++    sub         v3.8h, v7.8h, v6.8h     // a-b
++    sub         v4.8h, v5.8h, v6.8h     // c-b
++    ssra        v4.8h, v3.8h, #2        // (a-b)/4-b+c
++    ssra        v5.8h, v4.8h, #2        // ((a-b)/4-b+c)/4+c = (a-5*b+20*c)/16
++    mov         v25.16b, v5.16b
++
++    uaddl       v1.8h,  v16.8b, v21.8b
++    umlsl       v1.8h,  v17.8b, v30.8b
++    umlal       v1.8h,  v18.8b, v31.8b
++    umlal       v1.8h,  v19.8b, v31.8b
++    umlsl       v1.8h,  v20.8b, v30.8b
++
++    ext         v3.16b, v2.16b, v1.16b, #2
++    ext         v4.16b, v2.16b, v1.16b, #4
++    ext         v5.16b, v2.16b, v1.16b, #6
++    ext         v6.16b, v2.16b, v1.16b, #8
++    ext         v7.16b, v2.16b, v1.16b, #10
++
++    add         v7.8h, v2.8h, v7.8h     // filter = 1
++    add         v6.8h, v3.8h, v6.8h     // filter = -5
++    add         v5.8h, v4.8h, v5.8h     // filter = 20
++
++    sub         v3.8h, v7.8h, v6.8h     // a-b
++    sub         v4.8h, v5.8h, v6.8h     // c-b
++    ssra        v4.8h, v3.8h, #2        // (a-b)/4-b+c
++    ssra        v5.8h, v4.8h, #2        // ((a-b)/4-b+c)/4+c = (a-5*b+20*c)/16
++
++    sqrshrun    v27.8b, v25.8h, #6
++    sqrshrun2   v27.16b, v5.8h, #6
++    st1         {v27.16b}, [x2],  #16
++
++    b.gt        2b
++
++    subs        w6,  w6,  #1
++    add         x10,  x10,  x4
++    add         x11,  x11,  x4
++    add         x12,  x12,  x4
++    add         x13,  x13,  x4
++    b.gt        1b
++
++    ret
++endfunc
++DISABLE_I8MM
++#endif // HAVE_I8MM
++
+ function load_deinterleave_chroma_fenc_neon, export=1
+     mov         x4,  #FENC_STRIDE/2
+     b           load_deinterleave_chroma
+diff --git a/common/aarch64/mc-c.c b/common/aarch64/mc-c.c
+index 8551294b..342ed506 100644
+--- a/common/aarch64/mc-c.c
++++ b/common/aarch64/mc-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc-c.c: aarch64 motion compensation
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+@@ -272,6 +272,14 @@ void x264_hpel_filter_neon( pixel *dsth, pixel *dstv, pixel *dstc,
+                             pixel *src, intptr_t stride, int width,
+                             int height, int16_t *buf );
+ 
++
++#if !HIGH_BIT_DEPTH && HAVE_I8MM
++#define x264_hpel_filter_neon_i8mm x264_template(hpel_filter_neon_i8mm)
++void x264_hpel_filter_neon_i8mm( pixel *dsth, pixel *dstv, pixel *dstc,
++                                 pixel *src, intptr_t stride, int width,
++                                 int height, int16_t *buf );
++#endif // !HIGH_BIT_DEPTH && HAVE_I8MM
++
+ PLANE_COPY(16, neon)
+ PLANE_COPY_SWAP(16, neon)
+ PLANE_INTERLEAVE(neon)
+@@ -352,5 +360,12 @@ void x264_mc_init_aarch64( uint32_t cpu, x264_mc_functions_t *pf )
+         pf->avg[PIXEL_4x2]   = x264_pixel_avg_4x2_sve;
+     }
+ #endif
++
++#if HAVE_I8MM
++    if( cpu&X264_CPU_I8MM )
++    {
++        pf->hpel_filter = x264_hpel_filter_neon_i8mm;
++    }
++#endif // HAVE_I8MM
+ #endif // !HIGH_BIT_DEPTH
+ }
+diff --git a/common/aarch64/mc.h b/common/aarch64/mc.h
+index 05a15c16..53a30ab7 100644
+--- a/common/aarch64/mc.h
++++ b/common/aarch64/mc.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc.h: aarch64 motion compensation
+  *****************************************************************************
+- * Copyright (C) 2014-2024 x264 project
++ * Copyright (C) 2014-2025 x264 project
+  *
+  * Authors: Janne Grunau <janne-x264@jannau.net>
+  *
+diff --git a/common/aarch64/pixel-a-common.S b/common/aarch64/pixel-a-common.S
+index 9e925e2f..215b7c98 100644
+--- a/common/aarch64/pixel-a-common.S
++++ b/common/aarch64/pixel-a-common.S
+@@ -1,7 +1,7 @@
+ /****************************************************************************
+  * pixel-a-common.S: aarch64 pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+diff --git a/common/aarch64/pixel-a-sve.S b/common/aarch64/pixel-a-sve.S
+index f3a7690c..6d033201 100644
+--- a/common/aarch64/pixel-a-sve.S
++++ b/common/aarch64/pixel-a-sve.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel-a-sve.S: aarch64 pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Chen <david.chen@myais.com.cn>
+  *
+@@ -26,7 +26,7 @@
+ #include "asm.S"
+ #include "pixel-a-common.S"
+ 
+-.arch armv8-a+sve
++ENABLE_SVE
+ 
+ #if BIT_DEPTH == 8
+ 
+diff --git a/common/aarch64/pixel-a.S b/common/aarch64/pixel-a.S
+index 449919b5..572f3bff 100644
+--- a/common/aarch64/pixel-a.S
++++ b/common/aarch64/pixel-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel.S: aarch64 pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+@@ -77,26 +77,42 @@ endconst
+     uabal       v17.8h,  v2.8b,  v3.8b
+ .endm
+ 
+-.macro SAD_START_16
++.macro SAD_START_16, dotprod=0
+     ld1         {v1.16b}, [x2], x3
+     ld1         {v0.16b}, [x0], x1
+     ld1         {v3.16b}, [x2], x3
+     ld1         {v2.16b}, [x0], x1
++.if \dotprod == 0
+     uabdl       v16.8h,  v0.8b,  v1.8b
+     uabdl2      v17.8h,  v0.16b, v1.16b
+     uabal       v16.8h,  v2.8b,  v3.8b
+     uabal2      v17.8h,  v2.16b, v3.16b
++.else
++    movi        v18.4s, #0x0
++    movi        v19.16b, #0x1
++    uabd        v16.16b, v0.16b,  v1.16b
++    uabd        v17.16b, v2.16b,  v3.16b
++    udot        v18.4s, v16.16b, v19.16b
++    udot        v18.4s, v17.16b, v19.16b
++.endif
+ .endm
+ 
+-.macro SAD_16
++.macro SAD_16, dotprod=0
+     ld1         {v1.16b}, [x2], x3
+     ld1         {v0.16b}, [x0], x1
+     ld1         {v3.16b}, [x2], x3
+     ld1         {v2.16b}, [x0], x1
++.if \dotprod == 0
+     uabal       v16.8h,  v0.8b,  v1.8b
+     uabal2      v17.8h,  v0.16b, v1.16b
+     uabal       v16.8h,  v2.8b,  v3.8b
+     uabal2      v17.8h,  v2.16b, v3.16b
++.else
++    uabd        v16.16b, v0.16b,  v1.16b
++    uabd        v17.16b, v2.16b,  v3.16b
++    udot        v18.4s, v16.16b, v19.16b
++    udot        v18.4s, v17.16b, v19.16b
++.endif
+ .endm
+ 
+ .macro SAD_FUNC w, h, name
+@@ -115,6 +131,19 @@ function pixel_sad\name\()_\w\()x\h\()_neon, export=1
+ endfunc
+ .endm
+ 
++.macro SAD_FUNC_DOTPROD w, h, name
++function pixel_sad\name\()_\w\()x\h\()_neon_dotprod, export=1
++    SAD_START_\w 1
++
++.rept \h / 2 - 1
++    SAD_\w 1
++.endr
++    addv        s0,  v18.4s
++    fmov        w0,  s0
++    ret
++endfunc
++.endm
++
+ .macro SAD_X_4 x, first=uabal
+     ld1         {v0.s}[0], [x0], x7
+     ld1         {v1.s}[0], [x1], x5
+@@ -232,6 +261,75 @@ function pixel_sad_x\x\()_\w\()x\h\()_neon, export=1
+ endfunc
+ .endm
+ 
++.macro SAD_X_DOTPROD_16 x
++    ld1         {v0.16b}, [x0], x7
++    ld1         {v1.16b}, [x1], x5
++    ld1         {v2.16b}, [x2], x5
++    uabd        v20.16b, v1.16b,  v0.16b
++    uabd        v22.16b, v2.16b,  v0.16b
++    ld1         {v5.16b}, [x0], x7
++    udot        v16.4s, v20.16b, v28.16b
++    udot        v17.4s, v22.16b, v28.16b
++    ld1         {v3.16b}, [x3], x5
++    ld1         {v1.16b}, [x1], x5
++    uabd        v24.16b, v3.16b,  v0.16b
++    uabd        v21.16b, v1.16b,  v5.16b
++    ld1         {v2.16b}, [x2], x5
++    ld1         {v3.16b}, [x3], x5
++    udot        v18.4s, v24.16b, v28.16b
++    udot        v16.4s, v21.16b, v28.16b
++    uabd        v23.16b, v2.16b,  v5.16b
++    uabd        v25.16b, v3.16b,  v5.16b
++    udot        v17.4s, v23.16b, v28.16b
++    udot        v18.4s, v25.16b, v28.16b
++.if \x == 4
++    ld1         {v4.16b}, [x4], x5
++    ld1         {v1.16b}, [x4], x5
++    uabd        v26.16b, v4.16b,  v0.16b
++    uabd        v27.16b, v1.16b,  v5.16b
++    udot        v19.4s, v26.16b, v28.16b
++    udot        v19.4s, v27.16b, v28.16b
++.endif
++.endm
++
++.macro SAD_X_DOTPROD_FUNC x, w, h
++function pixel_sad_x\x\()_\w\()x\h\()_neon_dotprod, export=1
++    movi        v16.4s, #0x0
++    movi        v17.4s, #0x0
++    movi        v18.4s, #0x0
++.if \x == 4
++    movi        v19.4s, #0x0
++.endif
++    movi        v28.16b, #0x1
++
++.if \x == 3
++    mov         x6,  x5
++    mov         x5,  x4
++.endif
++    mov         x7,  #FENC_STRIDE
++
++    SAD_X_DOTPROD_\w    \x
++
++.rept \h / 2 - 1
++    SAD_X_DOTPROD_\w    \x
++.endr
++
++    addv        s0,  v16.4s
++    addv        s1,  v17.4s
++    addv        s2,  v18.4s
++.if \x == 4
++    addv        s3,  v19.4s
++.endif
++    stp         s0,  s1,  [x6], #8
++.if \x == 3
++    str         s2,  [x6]
++.else
++    stp         s2,  s3,  [x6]
++.endif
++    ret
++endfunc
++.endm
++
+ function pixel_vsad_neon, export=1
+     subs        w2,  w2,  #2
+     ld1         {v0.16b},  [x0],  x1
+@@ -256,6 +354,35 @@ function pixel_vsad_neon, export=1
+     ret
+ endfunc
+ 
++#if HAVE_DOTPROD
++ENABLE_DOTPROD
++function pixel_vsad_neon_dotprod, export=1
++    ld1         {v0.16b},  [x0],  x1
++    ld1         {v1.16b},  [x0],  x1
++    subs        w2,  w2,  #2
++    movi        v3.16b, #0x1
++    movi        v6.4s, #0x0
++    uabd        v5.16b, v0.16b,  v1.16b
++    udot        v6.4s,  v5.16b,  v3.16b
++    b.le        2f
++1:
++    ld1         {v0.16b},  [x0],  x1
++    subs        w2,  w2,  #2
++    uabd        v5.16b, v0.16b,  v1.16b
++    ld1         {v1.16b},  [x0],  x1
++    udot        v6.4s,  v5.16b,  v3.16b
++    b.lt        2f
++    uabd        v5.16b, v0.16b,  v1.16b
++    udot        v6.4s,  v5.16b,  v3.16b
++    b.gt        1b
++2:
++    addv        s0,  v6.4s
++    fmov        w0,  s0
++    ret
++endfunc
++DISABLE_DOTPROD
++#endif // HAVE_DOTPROD
++
+ function pixel_asd8_neon, export=1
+     sub         w4,  w4,  #2
+     ld1         {v0.8b}, [x0], x1
+@@ -375,6 +502,45 @@ function pixel_ssd_\w\()x\h\()_neon, export=1
+ endfunc
+ .endm
+ 
++.macro SSD_DOTPROD_8
++    ld1         {v16.8b}, [x0], x1
++    ld1         {v17.8b}, [x2], x3
++    ld1         {v18.8b}, [x0], x1
++    uabd        v20.8b,  v16.8b,  v17.8b
++    ld1         {v19.8b}, [x2], x3
++    uabd        v21.8b,  v18.8b,  v19.8b
++    udot        v22.2s,  v20.8b,  v20.8b
++    udot        v22.2s,  v21.8b,  v21.8b
++.endm
++
++.macro SSD_DOTPROD_16
++    ld1         {v16.16b}, [x0], x1
++    ld1         {v17.16b}, [x2], x3
++    ld1         {v18.16b}, [x0], x1
++    uabd        v20.16b, v16.16b, v17.16b
++    ld1         {v19.16b}, [x2], x3
++    uabd        v21.16b, v18.16b, v19.16b
++    udot        v22.4s,  v20.16b, v20.16b
++    udot        v22.4s,  v21.16b, v21.16b
++.endm
++
++.macro SSD_DOTPROD_FUNC w h
++function pixel_ssd_\w\()x\h\()_neon_dotprod, export=1
++    movi        v22.4s, #0x0
++
++.rept \h/2
++    SSD_DOTPROD_\w
++.endr
++.if \w > 8
++    addv        s0,  v22.4s
++.else
++    addp        v0.2s, v22.2s, v22.2s
++.endif
++    mov         w0,  v0.s[0]
++    ret
++endfunc
++.endm
++
+ function pixel_satd_4x4_neon, export=1
+     ld1         {v1.s}[0],  [x2], x3
+     ld1         {v0.s}[0],  [x0], x1
+@@ -2855,3 +3021,20 @@ HADAMARD_AC  8, 8
+ HADAMARD_AC  8, 16
+ HADAMARD_AC 16, 8
+ HADAMARD_AC 16, 16
++
++#if BIT_DEPTH == 8 && HAVE_DOTPROD
++ENABLE_DOTPROD
++SAD_FUNC_DOTPROD  16, 8
++SAD_FUNC_DOTPROD  16, 16
++SAD_X_DOTPROD_FUNC  3, 16, 8
++SAD_X_DOTPROD_FUNC  3, 16, 16
++SAD_X_DOTPROD_FUNC  4, 16, 8
++SAD_X_DOTPROD_FUNC  4, 16, 16
++
++SSD_DOTPROD_FUNC   8, 4
++SSD_DOTPROD_FUNC   8, 8
++SSD_DOTPROD_FUNC   8, 16
++SSD_DOTPROD_FUNC  16, 8
++SSD_DOTPROD_FUNC  16, 16
++DISABLE_DOTPROD
++#endif // BIT_DEPTH == 8 && HAVE_DOTPROD
+diff --git a/common/aarch64/pixel.h b/common/aarch64/pixel.h
+index fac6c744..69575015 100644
+--- a/common/aarch64/pixel.h
++++ b/common/aarch64/pixel.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel.h: aarch64 pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+@@ -35,6 +35,7 @@
+ #define x264_pixel_sad_8x16_neon x264_template(pixel_sad_8x16_neon)
+ #define x264_pixel_sad_8x4_neon x264_template(pixel_sad_8x4_neon)
+ #define x264_pixel_sad_8x8_neon x264_template(pixel_sad_8x8_neon)
++
+ #define x264_pixel_sad_x3_16x16_neon x264_template(pixel_sad_x3_16x16_neon)
+ #define x264_pixel_sad_x3_16x8_neon x264_template(pixel_sad_x3_16x8_neon)
+ #define x264_pixel_sad_x3_4x4_neon x264_template(pixel_sad_x3_4x4_neon)
+@@ -65,6 +66,22 @@
+ #define x264_pixel_ssd_8x16_neon x264_template(pixel_ssd_8x16_neon)
+ #define x264_pixel_ssd_8x4_neon x264_template(pixel_ssd_8x4_neon)
+ #define x264_pixel_ssd_8x8_neon x264_template(pixel_ssd_8x8_neon)
++
++#if HAVE_DOTPROD
++#define x264_pixel_sad_16x8_neon_dotprod x264_template(pixel_sad_16x8_neon_dotprod)
++#define x264_pixel_sad_16x16_neon_dotprod x264_template(pixel_sad_16x16_neon_dotprod)
++#define x264_pixel_sad_x3_16x16_neon_dotprod x264_template(pixel_sad_x3_16x16_neon_dotprod)
++#define x264_pixel_sad_x3_16x8_neon_dotprod x264_template(pixel_sad_x3_16x8_neon_dotprod)
++#define x264_pixel_sad_x4_16x16_neon_dotprod x264_template(pixel_sad_x4_16x16_neon_dotprod)
++#define x264_pixel_sad_x4_16x8_neon_dotprod x264_template(pixel_sad_x4_16x8_neon_dotprod)
++
++#define x264_pixel_ssd_16x16_neon_dotprod x264_template(pixel_ssd_16x16_neon_dotprod)
++#define x264_pixel_ssd_16x8_neon_dotprod x264_template(pixel_ssd_16x8_neon_dotprod)
++#define x264_pixel_ssd_8x16_neon_dotprod x264_template(pixel_ssd_8x16_neon_dotprod)
++#define x264_pixel_ssd_8x4_neon_dotprod x264_template(pixel_ssd_8x4_neon_dotprod)
++#define x264_pixel_ssd_8x8_neon_dotprod x264_template(pixel_ssd_8x8_neon_dotprod)
++#endif // HAVE_DOTPROD
++
+ #define x264_pixel_ssd_4x16_sve x264_template(pixel_ssd_4x16_sve)
+ #define x264_pixel_ssd_4x4_sve x264_template(pixel_ssd_4x4_sve)
+ #define x264_pixel_ssd_4x8_sve x264_template(pixel_ssd_4x8_sve)
+@@ -101,6 +118,11 @@ DECL_X1( satd, neon )
+ DECL_X1( ssd, neon )
+ DECL_X1_SSD_SVE( )
+ 
++#if HAVE_DOTPROD
++DECL_X1( sad, neon_dotprod )
++DECL_X4( sad, neon_dotprod )
++DECL_X1( ssd, neon_dotprod )
++#endif // HAVE_DOTPROD
+ 
+ #define x264_pixel_ssd_nv12_core_neon x264_template(pixel_ssd_nv12_core_neon)
+ void x264_pixel_ssd_nv12_core_neon( pixel *, intptr_t, pixel *, intptr_t, int, int, uint64_t *, uint64_t * );
+@@ -108,6 +130,11 @@ void x264_pixel_ssd_nv12_core_neon( pixel *, intptr_t, pixel *, intptr_t, int, i
+ #define x264_pixel_vsad_neon x264_template(pixel_vsad_neon)
+ int x264_pixel_vsad_neon( pixel *, intptr_t, int );
+ 
++#if HAVE_DOTPROD
++#define x264_pixel_vsad_neon_dotprod x264_template(pixel_vsad_neon_dotprod)
++int x264_pixel_vsad_neon_dotprod( pixel *, intptr_t, int );
++#endif // HAVE_DOTPROD
++
+ #define x264_pixel_sa8d_8x8_neon x264_template(pixel_sa8d_8x8_neon)
+ int x264_pixel_sa8d_8x8_neon  ( pixel *, intptr_t, pixel *, intptr_t );
+ #define x264_pixel_sa8d_16x16_neon x264_template(pixel_sa8d_16x16_neon)
+diff --git a/common/aarch64/predict-a.S b/common/aarch64/predict-a.S
+index 5a052e71..c460958e 100644
+--- a/common/aarch64/predict-a.S
++++ b/common/aarch64/predict-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict.S: aarch64 intra prediction
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Mans Rullgard <mans@mansr.com>
+diff --git a/common/aarch64/predict-c.c b/common/aarch64/predict-c.c
+index d8d4bc3c..d4c1cd63 100644
+--- a/common/aarch64/predict-c.c
++++ b/common/aarch64/predict-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict.c: aarch64 intra prediction
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+diff --git a/common/aarch64/predict.h b/common/aarch64/predict.h
+index f4c43e73..cef08978 100644
+--- a/common/aarch64/predict.h
++++ b/common/aarch64/predict.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict.h: aarch64 intra prediction
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+diff --git a/common/aarch64/quant-a.S b/common/aarch64/quant-a.S
+index 006e0ead..383309d2 100644
+--- a/common/aarch64/quant-a.S
++++ b/common/aarch64/quant-a.S
+@@ -1,7 +1,7 @@
+ /****************************************************************************
+  * quant.S: arm quantization and level-run
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+diff --git a/common/aarch64/quant.h b/common/aarch64/quant.h
+index a2b324fe..37332328 100644
+--- a/common/aarch64/quant.h
++++ b/common/aarch64/quant.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * quant.h: arm quantization and level-run
+  *****************************************************************************
+- * Copyright (C) 2005-2024 x264 project
++ * Copyright (C) 2005-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+diff --git a/common/arm/asm.S b/common/arm/asm.S
+index 88e8ba60..a4a3eb35 100644
+--- a/common/arm/asm.S
++++ b/common/arm/asm.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * asm.S: arm utility macros
+  *****************************************************************************
+- * Copyright (C) 2008-2024 x264 project
++ * Copyright (C) 2008-2025 x264 project
+  *
+  * Authors: Mans Rullgard <mans@mansr.com>
+  *          David Conrad <lessen42@gmail.com>
+diff --git a/common/arm/bitstream-a.S b/common/arm/bitstream-a.S
+index 35157c4b..43418b6d 100644
+--- a/common/arm/bitstream-a.S
++++ b/common/arm/bitstream-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * bitstream-a.S: arm bitstream functions
+  *****************************************************************************
+- * Copyright (C) 2014-2024 x264 project
++ * Copyright (C) 2014-2025 x264 project
+  *
+  * Authors: Janne Grunau <janne-x264@jannau.net>
+  *
+diff --git a/common/arm/bitstream.h b/common/arm/bitstream.h
+index 41a32bc5..06110ec1 100644
+--- a/common/arm/bitstream.h
++++ b/common/arm/bitstream.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * bitstream.h: arm bitstream functions
+  *****************************************************************************
+- * Copyright (C) 2017-2024 x264 project
++ * Copyright (C) 2017-2025 x264 project
+  *
+  * Authors: Anton Mitrofanov <BugMaster@narod.ru>
+  *
+diff --git a/common/arm/cpu-a.S b/common/arm/cpu-a.S
+index 88af84ab..4e5473b5 100644
+--- a/common/arm/cpu-a.S
++++ b/common/arm/cpu-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * cpu-a.S: arm cpu detection
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *
+diff --git a/common/arm/dct-a.S b/common/arm/dct-a.S
+index a35a8b85..5eea9259 100644
+--- a/common/arm/dct-a.S
++++ b/common/arm/dct-a.S
+@@ -1,7 +1,7 @@
+ /****************************************************************************
+  * dct-a.S: arm transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Martin Storsjo <martin@martin.st>
+diff --git a/common/arm/dct.h b/common/arm/dct.h
+index e26fabfe..45e2819e 100644
+--- a/common/arm/dct.h
++++ b/common/arm/dct.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * dct.h: arm transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *
+diff --git a/common/arm/deblock-a.S b/common/arm/deblock-a.S
+index b013e8d9..720f5ce4 100644
+--- a/common/arm/deblock-a.S
++++ b/common/arm/deblock-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * deblock.S: arm deblocking
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: Mans Rullgard <mans@mansr.com>
+  *          Martin Storsjo <martin@martin.st>
+diff --git a/common/arm/deblock.h b/common/arm/deblock.h
+index cc135cf5..750a0506 100644
+--- a/common/arm/deblock.h
++++ b/common/arm/deblock.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * deblock.h: arm deblocking
+  *****************************************************************************
+- * Copyright (C) 2017-2024 x264 project
++ * Copyright (C) 2017-2025 x264 project
+  *
+  * Authors: Anton Mitrofanov <BugMaster@narod.ru>
+  *
+diff --git a/common/arm/mc-a.S b/common/arm/mc-a.S
+index 8eca86d1..9939116e 100644
+--- a/common/arm/mc-a.S
++++ b/common/arm/mc-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc.S: arm motion compensation
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Mans Rullgard <mans@mansr.com>
+diff --git a/common/arm/mc-c.c b/common/arm/mc-c.c
+index 68f4be81..41e8beb0 100644
+--- a/common/arm/mc-c.c
++++ b/common/arm/mc-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc-c.c: arm motion compensation
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+diff --git a/common/arm/mc.h b/common/arm/mc.h
+index 002b30a8..c1902153 100644
+--- a/common/arm/mc.h
++++ b/common/arm/mc.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc.h: arm motion compensation
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *
+diff --git a/common/arm/pixel-a.S b/common/arm/pixel-a.S
+index 74be7de6..38289597 100644
+--- a/common/arm/pixel-a.S
++++ b/common/arm/pixel-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel.S: arm pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+diff --git a/common/arm/pixel.h b/common/arm/pixel.h
+index 66c11968..5f145a29 100644
+--- a/common/arm/pixel.h
++++ b/common/arm/pixel.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel.h: arm pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *
+diff --git a/common/arm/predict-a.S b/common/arm/predict-a.S
+index eed73077..2a44b772 100644
+--- a/common/arm/predict-a.S
++++ b/common/arm/predict-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict.S: arm intra prediction
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Mans Rullgard <mans@mansr.com>
+diff --git a/common/arm/predict-c.c b/common/arm/predict-c.c
+index 88b6cd61..caf2af45 100644
+--- a/common/arm/predict-c.c
++++ b/common/arm/predict-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict.c: arm intra prediction
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *
+diff --git a/common/arm/predict.h b/common/arm/predict.h
+index 1722c70d..7cba5778 100644
+--- a/common/arm/predict.h
++++ b/common/arm/predict.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict.h: arm intra prediction
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *
+diff --git a/common/arm/quant-a.S b/common/arm/quant-a.S
+index 92dd6ab0..a16db5a7 100644
+--- a/common/arm/quant-a.S
++++ b/common/arm/quant-a.S
+@@ -1,7 +1,7 @@
+ /****************************************************************************
+  * quant.S: arm quantization and level-run
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *          Janne Grunau <janne-x264@jannau.net>
+diff --git a/common/arm/quant.h b/common/arm/quant.h
+index 3124c2ce..f0046a52 100644
+--- a/common/arm/quant.h
++++ b/common/arm/quant.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * quant.h: arm quantization and level-run
+  *****************************************************************************
+- * Copyright (C) 2005-2024 x264 project
++ * Copyright (C) 2005-2025 x264 project
+  *
+  * Authors: David Conrad <lessen42@gmail.com>
+  *
+diff --git a/common/base.c b/common/base.c
+index b9b86858..ef5f64b2 100644
+--- a/common/base.c
++++ b/common/base.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * base.c: misc common functions (bit depth independent)
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/common/base.h b/common/base.h
+index cc277b13..3c44160e 100644
+--- a/common/base.h
++++ b/common/base.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * base.h: misc common functions (bit depth independent)
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/bitstream.c b/common/bitstream.c
+index 702e3e3a..aa3b8eb4 100644
+--- a/common/bitstream.c
++++ b/common/bitstream.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * bitstream.c: bitstream writing
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Fiona Glaser <fiona@x264.com>
+diff --git a/common/bitstream.h b/common/bitstream.h
+index 2116f71b..990cf7d9 100644
+--- a/common/bitstream.h
++++ b/common/bitstream.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * bitstream.h: bitstream writing
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Fiona Glaser <fiona@x264.com>
+diff --git a/common/cabac.c b/common/cabac.c
+index 2194b396..a73fa9f4 100644
+--- a/common/cabac.c
++++ b/common/cabac.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * cabac.c: arithmetic coder
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/cabac.h b/common/cabac.h
+index 4e7e86bc..24360476 100644
+--- a/common/cabac.h
++++ b/common/cabac.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * cabac.h: arithmetic coder
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/common/common.c b/common/common.c
+index 6cd25a64..c139ff77 100644
+--- a/common/common.c
++++ b/common/common.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * common.c: misc common functions
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/common/common.h b/common/common.h
+index 0b1b2adb..0b9409f7 100644
+--- a/common/common.h
++++ b/common/common.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * common.h: misc common functions
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/cpu.c b/common/cpu.c
+index fb7c07d5..73900db9 100644
+--- a/common/cpu.c
++++ b/common/cpu.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * cpu.c: cpu detection
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+@@ -27,20 +27,19 @@
+ 
+ #include "base.h"
+ 
+-#if SYS_CYGWIN || SYS_SunOS || SYS_OPENBSD
++#if HAVE_GETAUXVAL || HAVE_ELF_AUX_INFO
++#include <sys/auxv.h>
++#endif
++#if HAVE_SYSCONF
+ #include <unistd.h>
+ #endif
+ #if SYS_LINUX
+-#ifdef __ANDROID__
+-#include <unistd.h>
+-#else
+ #include <sched.h>
+ #endif
+-#endif
+ #if SYS_BEOS
+ #include <kernel/OS.h>
+ #endif
+-#if SYS_MACOSX || SYS_OPENBSD || SYS_FREEBSD
++#if SYS_MACOSX || SYS_FREEBSD || SYS_NETBSD || SYS_OPENBSD
+ #include <sys/types.h>
+ #include <sys/sysctl.h>
+ #endif
+@@ -96,8 +95,12 @@ const x264_cpu_name_t x264_cpu_names[] =
+ #elif ARCH_AARCH64
+     {"ARMv8",           X264_CPU_ARMV8},
+     {"NEON",            X264_CPU_NEON},
++    {"DotProd",         X264_CPU_DOTPROD},
++    {"I8MM",            X264_CPU_I8MM},
+     {"SVE",             X264_CPU_SVE},
+     {"SVE2",            X264_CPU_SVE2},
++#elif ARCH_RISCV64
++    {"RVV",             X264_CPU_RVV},
+ #elif ARCH_MIPS
+     {"MSA",             X264_CPU_MSA},
+ #elif ARCH_LOONGARCH
+@@ -107,7 +110,20 @@ const x264_cpu_name_t x264_cpu_names[] =
+     {"", 0},
+ };
+ 
+-#if (HAVE_ALTIVEC && SYS_LINUX) || (HAVE_ARMV6 && !HAVE_NEON)
++static unsigned long x264_getauxval( unsigned long type )
++{
++#if HAVE_GETAUXVAL
++    return getauxval( type );
++#elif HAVE_ELF_AUX_INFO
++    unsigned long aux = 0;
++    elf_aux_info( type, &aux, sizeof(aux) );
++    return aux;
++#else
++    return 0;
++#endif
++}
++
++#if ((HAVE_ALTIVEC && SYS_LINUX) || (HAVE_ARMV6 && !HAVE_NEON)) && !(HAVE_GETAUXVAL || HAVE_ELF_AUX_INFO)
+ #include <signal.h>
+ #include <setjmp.h>
+ static sigjmp_buf jmpbuf;
+@@ -310,7 +326,23 @@ uint32_t x264_cpu_detect( void )
+ 
+ #elif HAVE_ALTIVEC
+ 
+-#if SYS_MACOSX || SYS_OPENBSD || SYS_FREEBSD || SYS_NETBSD
++#if HAVE_GETAUXVAL || HAVE_ELF_AUX_INFO
++
++#define HWCAP_PPC_ALTIVEC   (1U << 28)
++
++uint32_t x264_cpu_detect( void )
++{
++    uint32_t flags = 0;
++
++    unsigned long hwcap = x264_getauxval( AT_HWCAP );
++
++    if ( hwcap & HWCAP_PPC_ALTIVEC )
++        flags |= X264_CPU_ALTIVEC;
++
++    return flags;
++}
++
++#elif SYS_MACOSX || SYS_FREEBSD || SYS_NETBSD || SYS_OPENBSD
+ 
+ uint32_t x264_cpu_detect( void )
+ {
+@@ -380,11 +412,19 @@ uint32_t x264_cpu_detect( void )
+ void x264_cpu_neon_test( void );
+ int x264_cpu_fast_neon_mrc_test( void );
+ 
++#define HWCAP_ARM_NEON   (1U << 12)
++
+ uint32_t x264_cpu_detect( void )
+ {
+     uint32_t flags = 0;
+     flags |= X264_CPU_ARMV6;
+ 
++#if HAVE_GETAUXVAL || HAVE_ELF_AUX_INFO
++    unsigned long hwcap = x264_getauxval( AT_HWCAP );
++
++    if ( hwcap & HWCAP_ARM_NEON )
++        flags |= X264_CPU_NEON;
++#else
+     // don't do this hack if compiled with -mfpu=neon
+ #if !HAVE_NEON
+     static void (* oldsig)( int );
+@@ -402,6 +442,7 @@ uint32_t x264_cpu_detect( void )
+ #endif
+ 
+     flags |= X264_CPU_NEON;
++#endif
+ 
+     // fast neon -> arm (Cortex-A9) detection relies on user access to the
+     // cycle counter; this assumes ARMv7 performance counters.
+@@ -411,27 +452,57 @@ uint32_t x264_cpu_detect( void )
+     // x264 instance disables or reinits the counters while x264 is using them,
+     // which may result in incorrect detection and the counters stuck enabled.
+     // right now Apple does not seem to support performance counters for this test
+-#ifndef __MACH__
++    // Don't test this on Windows; performance counters are readable, but
++    // the PMNC is not readable.
++#if !defined(__MACH__) && !defined(_WIN32)
+     flags |= x264_cpu_fast_neon_mrc_test() ? X264_CPU_FAST_NEON_MRC : 0;
+ #endif
+     // TODO: write dual issue test? currently it's A8 (dual issue) vs. A9 (fast mrc)
+     return flags;
+ }
+ 
++#elif HAVE_RISCV64
++
++#define HWCAP_RISCV64_RVV     (1 << ('V' - 'A'))
++
++uint32_t x264_cpu_detect( void )
++{
++    uint32_t flags = 0;
++
++#if HAVE_GETAUXVAL || HAVE_ELF_AUX_INFO
++    unsigned long hwcap = x264_getauxval( AT_HWCAP );
++
++    if ( hwcap & HWCAP_RISCV64_RVV )
++        flags |= X264_CPU_RVV;
++#else
++#if HAVE_RVV
++    flags |= X264_CPU_RVV;
++#endif
++#endif
++
++    return flags;
++}
++
+ #elif HAVE_AARCH64
+ 
+-#ifdef __linux__
+-#include <sys/auxv.h>
++#if defined(__linux__) || HAVE_ELF_AUX_INFO
+ 
+-#define HWCAP_AARCH64_SVE   (1 << 22)
+-#define HWCAP2_AARCH64_SVE2 (1 << 1)
++#define HWCAP_AARCH64_ASIMDDP (1U << 20)
++#define HWCAP_AARCH64_SVE     (1U << 22)
++#define HWCAP2_AARCH64_SVE2   (1U << 1)
++#define HWCAP2_AARCH64_I8MM   (1U << 13)
+ 
+ static uint32_t detect_flags( void )
+ {
+     uint32_t flags = 0;
+ 
+-    unsigned long hwcap = getauxval( AT_HWCAP );
+-    unsigned long hwcap2 = getauxval( AT_HWCAP2 );
++    unsigned long hwcap = x264_getauxval( AT_HWCAP );
++    unsigned long hwcap2 = x264_getauxval( AT_HWCAP2 );
++
++    if ( hwcap & HWCAP_AARCH64_ASIMDDP )
++        flags |= X264_CPU_DOTPROD;
++    if ( hwcap2 & HWCAP2_AARCH64_I8MM )
++        flags |= X264_CPU_I8MM;
+     if ( hwcap & HWCAP_AARCH64_SVE )
+         flags |= X264_CPU_SVE;
+     if ( hwcap2 & HWCAP2_AARCH64_SVE2 )
+@@ -439,6 +510,60 @@ static uint32_t detect_flags( void )
+ 
+     return flags;
+ }
++
++#elif defined(__APPLE__)
++#include <sys/sysctl.h>
++
++static int have_feature( const char *feature )
++{
++    int supported = 0;
++    size_t size = sizeof(supported);
++    if ( sysctlbyname( feature, &supported, &size, NULL, 0 ) )
++        return 0;
++    return supported;
++}
++
++static uint32_t detect_flags( void )
++{
++    uint32_t flags = 0;
++
++    if ( have_feature( "hw.optional.arm.FEAT_DotProd" ) )
++        flags |= X264_CPU_DOTPROD;
++    if ( have_feature( "hw.optional.arm.FEAT_I8MM" ) )
++        flags |= X264_CPU_I8MM;
++    /* No SVE and SVE2 feature detection available on Apple platforms. */
++    return flags;
++}
++
++#elif defined(_WIN32)
++#include <windows.h>
++
++static uint32_t detect_flags( void )
++{
++    uint32_t flags = 0;
++
++#ifdef PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE
++    if ( IsProcessorFeaturePresent( PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE ) )
++        flags |= X264_CPU_DOTPROD;
++#endif
++#ifdef PF_ARM_SVE_INSTRUCTIONS_AVAILABLE
++    if ( IsProcessorFeaturePresent( PF_ARM_SVE_INSTRUCTIONS_AVAILABLE ) )
++        flags |= X264_CPU_SVE;
++#endif
++#ifdef PF_ARM_SVE2_INSTRUCTIONS_AVAILABLE
++    if ( IsProcessorFeaturePresent( PF_ARM_SVE2_INSTRUCTIONS_AVAILABLE ) )
++        flags |= X264_CPU_SVE2;
++#endif
++#ifdef PF_ARM_SVE_I8MM_INSTRUCTIONS_AVAILABLE
++    /* There's no PF_* flag that indicates whether plain I8MM is available
++     * or not. But if SVE_I8MM is available, that also implies that
++     * regular I8MM is available. */
++    if ( IsProcessorFeaturePresent( PF_ARM_SVE_I8MM_INSTRUCTIONS_AVAILABLE ) )
++        flags |= X264_CPU_I8MM;
++#endif
++    return flags;
++}
++
+ #endif
+ 
+ uint32_t x264_cpu_detect( void )
+@@ -450,6 +575,12 @@ uint32_t x264_cpu_detect( void )
+ 
+     // If these features are enabled unconditionally in the compiler, we can
+     // assume that they are available.
++#ifdef __ARM_FEATURE_DOTPROD
++    flags |= X264_CPU_DOTPROD;
++#endif
++#ifdef __ARM_FEATURE_MATMUL_INT8
++    flags |= X264_CPU_I8MM;
++#endif
+ #ifdef __ARM_FEATURE_SVE
+     flags |= X264_CPU_SVE;
+ #endif
+@@ -458,7 +589,8 @@ uint32_t x264_cpu_detect( void )
+ #endif
+ 
+     // Where possible, try to do runtime detection as well.
+-#ifdef __linux__
++#if defined(__linux__) || HAVE_ELF_AUX_INFO || \
++    defined(__APPLE__) || defined(_WIN32)
+     flags |= detect_flags();
+ #endif
+ 
+@@ -473,7 +605,6 @@ uint32_t x264_cpu_detect( void )
+ }
+ 
+ #elif HAVE_LSX
+-#include <sys/auxv.h>
+ 
+ #define LA_HWCAP_LSX    ( 1U << 4 )
+ #define LA_HWCAP_LASX   ( 1U << 5 )
+@@ -481,7 +612,7 @@ uint32_t x264_cpu_detect( void )
+ uint32_t x264_cpu_detect( void )
+ {
+     uint32_t flags = 0;
+-    uint32_t hwcap = (uint32_t)getauxval( AT_HWCAP );
++    uint32_t hwcap = (uint32_t)x264_getauxval( AT_HWCAP );
+ 
+     if( hwcap & LA_HWCAP_LSX )
+         flags |= X264_CPU_LSX;
+@@ -508,14 +639,7 @@ int x264_cpu_num_processors( void )
+ #elif SYS_WINDOWS
+     return x264_pthread_num_processors_np();
+ 
+-#elif SYS_CYGWIN || SYS_SunOS || SYS_OPENBSD
+-    return sysconf( _SC_NPROCESSORS_ONLN );
+-
+ #elif SYS_LINUX
+-#ifdef __ANDROID__
+-    // Android NDK does not expose sched_getaffinity
+-    return sysconf( _SC_NPROCESSORS_CONF );
+-#else
+     cpu_set_t p_aff;
+     memset( &p_aff, 0, sizeof(p_aff) );
+     if( sched_getaffinity( 0, sizeof(p_aff), &p_aff ) )
+@@ -528,22 +652,27 @@ int x264_cpu_num_processors( void )
+         np += (((uint8_t *)&p_aff)[bit / 8] >> (bit % 8)) & 1;
+     return np;
+ #endif
+-#endif
+ 
+ #elif SYS_BEOS
+     system_info info;
+     get_system_info( &info );
+     return info.cpu_count;
+ 
+-#elif SYS_MACOSX || SYS_FREEBSD
++#elif SYS_MACOSX
+     int ncpu;
+     size_t length = sizeof( ncpu );
+-    if( sysctlbyname("hw.ncpu", &ncpu, &length, NULL, 0) )
++    if( sysctlbyname("hw.logicalcpu", &ncpu, &length, NULL, 0) )
+     {
+         ncpu = 1;
+     }
+     return ncpu;
+ 
++#elif defined(_SC_NPROCESSORS_ONLN)
++    return sysconf( _SC_NPROCESSORS_ONLN );
++
++#elif defined(_SC_NPROCESSORS_CONF)
++    return sysconf( _SC_NPROCESSORS_CONF );
++
+ #else
+     return 1;
+ #endif
+diff --git a/common/cpu.h b/common/cpu.h
+index 0d29b251..b8397130 100644
+--- a/common/cpu.h
++++ b/common/cpu.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * cpu.h: cpu detection
+  *****************************************************************************
+- * Copyright (C) 2004-2024 x264 project
++ * Copyright (C) 2004-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *
+diff --git a/common/dct.c b/common/dct.c
+index e03c7a90..b208e26e 100644
+--- a/common/dct.c
++++ b/common/dct.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * dct.c: transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/common/dct.h b/common/dct.h
+index 324034d9..3e7ded00 100644
+--- a/common/dct.h
++++ b/common/dct.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * dct.h: transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2004-2024 x264 project
++ * Copyright (C) 2004-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *
+diff --git a/common/deblock.c b/common/deblock.c
+index d5418e2d..acd94590 100644
+--- a/common/deblock.c
++++ b/common/deblock.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * deblock.c: deblocking
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/frame.c b/common/frame.c
+index afc70e97..6f6c01ac 100644
+--- a/common/frame.c
++++ b/common/frame.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * frame.c: frame handling
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/frame.h b/common/frame.h
+index 65909fa6..670c4700 100644
+--- a/common/frame.h
++++ b/common/frame.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * frame.h: frame handling
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/loongarch/dct-a.S b/common/loongarch/dct-a.S
+index 86780e4e..b7a4e172 100644
+--- a/common/loongarch/dct-a.S
++++ b/common/loongarch/dct-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * dct-a.S: LoongArch transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Peng Zhou <zhoupeng@loongson.cn>
+  *
+diff --git a/common/loongarch/dct.h b/common/loongarch/dct.h
+index fad725ec..c4584035 100644
+--- a/common/loongarch/dct.h
++++ b/common/loongarch/dct.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * dct.h: loongarch transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Peng Zhou <zhoupeng@loongson.cn>
+  *
+diff --git a/common/loongarch/deblock-a.S b/common/loongarch/deblock-a.S
+index d13ea830..d1b10ea1 100644
+--- a/common/loongarch/deblock-a.S
++++ b/common/loongarch/deblock-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * deblock-a.S: loongarch deblock functions
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Hao Chen <chenhao@loongson.cn>
+  *
+diff --git a/common/loongarch/deblock.h b/common/loongarch/deblock.h
+index 452c5a3b..c0b7ed32 100644
+--- a/common/loongarch/deblock.h
++++ b/common/loongarch/deblock.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * deblock.h: loongarch deblock
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Hao Chen <chenhao@loongson.cn>
+  *
+diff --git a/common/loongarch/loongson_util.S b/common/loongarch/loongson_util.S
+index 683a1a8a..964a51a2 100644
+--- a/common/loongarch/loongson_util.S
++++ b/common/loongarch/loongson_util.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * loongson_util.S: loongson utility macros
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Shiyou Yin <yinshiyou-hf@loongson.cn>
+  *          Xiwei Gu <guxiwei-hf@loongson.cn>
+diff --git a/common/loongarch/mc-a.S b/common/loongarch/mc-a.S
+index 75041f23..a1928c32 100644
+--- a/common/loongarch/mc-a.S
++++ b/common/loongarch/mc-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc-a.S: LoongArch motion compensation
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Xiwei Gu <guxiwei-hf@loongson.cn>
+  *
+diff --git a/common/loongarch/mc-c.c b/common/loongarch/mc-c.c
+index fb5be675..42a78b3a 100644
+--- a/common/loongarch/mc-c.c
++++ b/common/loongarch/mc-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc-c.c: loongarch motion compensation
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Xiwei Gu <guxiwei-hf@loongson.cn>
+  *
+diff --git a/common/loongarch/mc.h b/common/loongarch/mc.h
+index 6421f6e3..694ceb10 100644
+--- a/common/loongarch/mc.h
++++ b/common/loongarch/mc.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc.h: loongarch motion compensation
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Xiwei Gu <guxiwei-hf@loongson.cn>
+  *
+diff --git a/common/loongarch/pixel-a.S b/common/loongarch/pixel-a.S
+index b1f84225..afc4bb09 100644
+--- a/common/loongarch/pixel-a.S
++++ b/common/loongarch/pixel-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel-a.S: LoongArch pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Hecai Yuan <yuanhecai@loongson.cn>
+  *
+diff --git a/common/loongarch/pixel-c.c b/common/loongarch/pixel-c.c
+index e417ef58..254d9274 100644
+--- a/common/loongarch/pixel-c.c
++++ b/common/loongarch/pixel-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel-c.c: loongarch pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Hecai Yuan <yuanhecai@loongson.cn>
+  *
+diff --git a/common/loongarch/pixel.h b/common/loongarch/pixel.h
+index 6d34b03b..eeb357af 100644
+--- a/common/loongarch/pixel.h
++++ b/common/loongarch/pixel.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel.h: loongarch pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Lu Wang <wanglu@loongson.cn>
+  *
+diff --git a/common/loongarch/predict-a.S b/common/loongarch/predict-a.S
+index ede46cd9..b54de24a 100644
+--- a/common/loongarch/predict-a.S
++++ b/common/loongarch/predict-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict-a.S: loongarch predict functions
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Xiwei Gu <guxiwei-hf@loongson.cn>
+  *          Lu Wang <wanglu@loongson.cn>
+diff --git a/common/loongarch/predict-c.c b/common/loongarch/predict-c.c
+index ce246e4b..e84fe376 100644
+--- a/common/loongarch/predict-c.c
++++ b/common/loongarch/predict-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict-c.c: loongarch intra prediction
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Xiwei Gu <guxiwei-hf@loongson.cn>
+  *
+diff --git a/common/loongarch/predict.h b/common/loongarch/predict.h
+index b246ad60..16a40e95 100644
+--- a/common/loongarch/predict.h
++++ b/common/loongarch/predict.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict.h: loongarch intra prediction
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Xiwei Gu <guxiwei-hf@loongson.cn>
+  *
+diff --git a/common/loongarch/quant-a.S b/common/loongarch/quant-a.S
+index a2f099d9..4f1b786a 100644
+--- a/common/loongarch/quant-a.S
++++ b/common/loongarch/quant-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * quant-a.S: LoongArch quantization and level-run
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Shiyou Yin <yinshiyou-hf@loongson.cn>
+  *
+diff --git a/common/loongarch/quant.h b/common/loongarch/quant.h
+index cc3a5399..23594863 100644
+--- a/common/loongarch/quant.h
++++ b/common/loongarch/quant.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * quant.h: loongarch quantization and level-run
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Shiyou Yin <yinshiyou-hf@loongson.cn>
+  *
+diff --git a/common/loongarch/sad-a.S b/common/loongarch/sad-a.S
+index 1612f3c0..b2984fcf 100644
+--- a/common/loongarch/sad-a.S
++++ b/common/loongarch/sad-a.S
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * sad-a.S: loongarch sad functions
+  *****************************************************************************
+- * Copyright (C) 2023-2024 x264 project
++ * Copyright (C) 2023-2025 x264 project
+  *
+  * Authors: Lu Wang <wanglu@loongson.cn>
+  *
+diff --git a/common/macroblock.c b/common/macroblock.c
+index 477a3213..2e91b9bf 100644
+--- a/common/macroblock.c
++++ b/common/macroblock.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * macroblock.c: macroblock common functions
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Fiona Glaser <fiona@x264.com>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/common/macroblock.h b/common/macroblock.h
+index 5e81db6a..1cdb03bb 100644
+--- a/common/macroblock.h
++++ b/common/macroblock.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * macroblock.h: macroblock common functions
+  *****************************************************************************
+- * Copyright (C) 2005-2024 x264 project
++ * Copyright (C) 2005-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/common/mc.c b/common/mc.c
+index b515607c..ae81ce4b 100644
+--- a/common/mc.c
++++ b/common/mc.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc.c: motion compensation
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/mc.h b/common/mc.h
+index a36e0a0a..128a9e01 100644
+--- a/common/mc.h
++++ b/common/mc.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc.h: motion compensation
+  *****************************************************************************
+- * Copyright (C) 2004-2024 x264 project
++ * Copyright (C) 2004-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *
+diff --git a/common/mips/dct-c.c b/common/mips/dct-c.c
+index 6ab8b96e..e0f44b03 100644
+--- a/common/mips/dct-c.c
++++ b/common/mips/dct-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * dct-c.c: msa transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2015-2024 x264 project
++ * Copyright (C) 2015-2025 x264 project
+  *
+  * Authors: Rishikesh More <rishikesh.more@imgtec.com>
+  *
+diff --git a/common/mips/dct.h b/common/mips/dct.h
+index 667fca17..d1cf800c 100644
+--- a/common/mips/dct.h
++++ b/common/mips/dct.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * dct.h: msa transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2015-2024 x264 project
++ * Copyright (C) 2015-2025 x264 project
+  *
+  * Authors: Rishikesh More <rishikesh.more@imgtec.com>
+  *
+diff --git a/common/mips/deblock-c.c b/common/mips/deblock-c.c
+index ccfdd0db..f67b6c55 100644
+--- a/common/mips/deblock-c.c
++++ b/common/mips/deblock-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * deblock-c.c: msa deblocking
+  *****************************************************************************
+- * Copyright (C) 2015-2024 x264 project
++ * Copyright (C) 2015-2025 x264 project
+  *
+  * Authors: Neha Rana <neha.rana@imgtec.com>
+  *
+diff --git a/common/mips/deblock.h b/common/mips/deblock.h
+index 60e1a509..618cbe11 100644
+--- a/common/mips/deblock.h
++++ b/common/mips/deblock.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * deblock.h: msa deblocking
+  *****************************************************************************
+- * Copyright (C) 2017-2024 x264 project
++ * Copyright (C) 2017-2025 x264 project
+  *
+  * Authors: Anton Mitrofanov <BugMaster@narod.ru>
+  *
+diff --git a/common/mips/macros.h b/common/mips/macros.h
+index 02bf1ac0..df7f8aad 100644
+--- a/common/mips/macros.h
++++ b/common/mips/macros.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * macros.h: msa macros
+  *****************************************************************************
+- * Copyright (C) 2015-2024 x264 project
++ * Copyright (C) 2015-2025 x264 project
+  *
+  * Authors: Rishikesh More <rishikesh.more@imgtec.com>
+  *
+diff --git a/common/mips/mc-c.c b/common/mips/mc-c.c
+index 3bc8b445..af7350a7 100644
+--- a/common/mips/mc-c.c
++++ b/common/mips/mc-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc-c.c: msa motion compensation
+  *****************************************************************************
+- * Copyright (C) 2015-2024 x264 project
++ * Copyright (C) 2015-2025 x264 project
+  *
+  * Authors: Neha Rana <neha.rana@imgtec.com>
+  *
+diff --git a/common/mips/mc.h b/common/mips/mc.h
+index 6ed55807..35d99bd1 100644
+--- a/common/mips/mc.h
++++ b/common/mips/mc.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc.h: msa motion compensation
+  *****************************************************************************
+- * Copyright (C) 2015-2024 x264 project
++ * Copyright (C) 2015-2025 x264 project
+  *
+  * Authors: Neha Rana <neha.rana@imgtec.com>
+  *
+diff --git a/common/mips/pixel-c.c b/common/mips/pixel-c.c
+index 3307d95a..feed4476 100644
+--- a/common/mips/pixel-c.c
++++ b/common/mips/pixel-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel-c.c: msa pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2015-2024 x264 project
++ * Copyright (C) 2015-2025 x264 project
+  *
+  * Authors: Mandar Sahastrabuddhe <mandar.sahastrabuddhe@imgtec.com>
+  *
+diff --git a/common/mips/pixel.h b/common/mips/pixel.h
+index dd19299b..07dd7eca 100644
+--- a/common/mips/pixel.h
++++ b/common/mips/pixel.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel.h: msa pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2015-2024 x264 project
++ * Copyright (C) 2015-2025 x264 project
+  *
+  * Authors: Mandar Sahastrabuddhe <mandar.sahastrabuddhe@imgtec.com>
+  *
+diff --git a/common/mips/predict-c.c b/common/mips/predict-c.c
+index ff22d0c9..595caf54 100644
+--- a/common/mips/predict-c.c
++++ b/common/mips/predict-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict-c.c: msa intra prediction
+  *****************************************************************************
+- * Copyright (C) 2015-2024 x264 project
++ * Copyright (C) 2015-2025 x264 project
+  *
+  * Authors: Mandar Sahastrabuddhe <mandar.sahastrabuddhe@imgtec.com>
+  *
+diff --git a/common/mips/predict.h b/common/mips/predict.h
+index c72ca937..1669cabd 100644
+--- a/common/mips/predict.h
++++ b/common/mips/predict.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict.h: msa intra prediction
+  *****************************************************************************
+- * Copyright (C) 2015-2024 x264 project
++ * Copyright (C) 2015-2025 x264 project
+  *
+  * Authors: Rishikesh More <rishikesh.more@imgtec.com>
+  *
+diff --git a/common/mips/quant-c.c b/common/mips/quant-c.c
+index ad8fdbc7..f88df356 100644
+--- a/common/mips/quant-c.c
++++ b/common/mips/quant-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * quant-c.c: msa quantization and level-run
+  *****************************************************************************
+- * Copyright (C) 2015-2024 x264 project
++ * Copyright (C) 2015-2025 x264 project
+  *
+  * Authors: Rishikesh More <rishikesh.more@imgtec.com>
+  *
+diff --git a/common/mips/quant.h b/common/mips/quant.h
+index 143f829f..25a686a6 100644
+--- a/common/mips/quant.h
++++ b/common/mips/quant.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * quant.h: msa quantization and level-run
+  *****************************************************************************
+- * Copyright (C) 2015-2024 x264 project
++ * Copyright (C) 2015-2025 x264 project
+  *
+  * Authors: Rishikesh More <rishikesh.more@imgtec.com>
+  *
+diff --git a/common/mvpred.c b/common/mvpred.c
+index 951910c4..ecd92c03 100644
+--- a/common/mvpred.c
++++ b/common/mvpred.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mvpred.c: motion vector prediction
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Fiona Glaser <fiona@x264.com>
+diff --git a/common/opencl.c b/common/opencl.c
+index dd04f227..7eb42fae 100644
+--- a/common/opencl.c
++++ b/common/opencl.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * opencl.c: OpenCL initialization and kernel compilation
+  *****************************************************************************
+- * Copyright (C) 2012-2024 x264 project
++ * Copyright (C) 2012-2025 x264 project
+  *
+  * Authors: Steve Borho <sborho@multicorewareinc.com>
+  *          Anton Mitrofanov <BugMaster@narod.ru>
+diff --git a/common/opencl.h b/common/opencl.h
+index c8ade378..49ecbc09 100644
+--- a/common/opencl.h
++++ b/common/opencl.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * opencl.h: OpenCL structures and defines
+  *****************************************************************************
+- * Copyright (C) 2012-2024 x264 project
++ * Copyright (C) 2012-2025 x264 project
+  *
+  * Authors: Steve Borho <sborho@multicorewareinc.com>
+  *          Anton Mitrofanov <BugMaster@narod.ru>
+diff --git a/common/osdep.c b/common/osdep.c
+index fdcf4e11..657cd859 100644
+--- a/common/osdep.c
++++ b/common/osdep.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * osdep.c: platform-specific code
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/common/osdep.h b/common/osdep.h
+index 966b949e..20bab354 100644
+--- a/common/osdep.h
++++ b/common/osdep.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * osdep.h: platform-specific code
+  *****************************************************************************
+- * Copyright (C) 2007-2024 x264 project
++ * Copyright (C) 2007-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+@@ -247,9 +247,8 @@ static inline int x264_is_regular_file_path( const char *path )
+     if( path_utf16 )
+     {
+         x264_struct_stat buf;
+-        if( _wstati64( path_utf16, &buf ) )
+-            ret = !WaitNamedPipeW( path_utf16, 0 );
+-        else
++        ret = !(WaitNamedPipeW( path_utf16, 0 ) || GetLastError() == ERROR_SEM_TIMEOUT);
++        if( ret && !_wstati64( path_utf16, &buf ) )
+             ret = S_ISREG( buf.st_mode );
+         if( path_utf16 != path_buf )
+             free( path_utf16 );
+@@ -434,7 +433,7 @@ X264_API int x264_threading_init( void );
+ static ALWAYS_INLINE int x264_pthread_fetch_and_add( int *val, int add, x264_pthread_mutex_t *mutex )
+ {
+ #if HAVE_THREAD
+-#if defined(__GNUC__) && (__GNUC__ > 4 || __GNUC__ == 4 && __GNUC_MINOR__ > 0) && (ARCH_X86 || ARCH_X86_64)
++#if defined(__GNUC__) && (__GNUC__ > 4 || __GNUC__ == 4 && __GNUC_MINOR__ > 0) && HAVE_SYNC_FETCH_AND_ADD
+     return __sync_fetch_and_add( val, add );
+ #else
+     x264_pthread_mutex_lock( mutex );
+diff --git a/common/pixel.c b/common/pixel.c
+index 6c42d197..d37162ce 100644
+--- a/common/pixel.c
++++ b/common/pixel.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel.c: pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+@@ -1629,6 +1629,23 @@ void x264_pixel_init( uint32_t cpu, x264_pixel_function_t *pixf )
+         pixf->ssim_4x4x2_core   = x264_pixel_ssim_4x4x2_core_neon;
+         pixf->ssim_end4         = x264_pixel_ssim_end4_neon;
+     }
++#if HAVE_DOTPROD
++    if( cpu&X264_CPU_DOTPROD ) {
++        pixf->sad[PIXEL_16x8]  = x264_pixel_sad_16x8_neon_dotprod;
++        pixf->sad[PIXEL_16x16] = x264_pixel_sad_16x16_neon_dotprod;
++        pixf->sad_x3[PIXEL_16x8]  = x264_pixel_sad_x3_16x8_neon_dotprod;
++        pixf->sad_x3[PIXEL_16x16] = x264_pixel_sad_x3_16x16_neon_dotprod;
++        pixf->sad_x4[PIXEL_16x8]  = x264_pixel_sad_x4_16x8_neon_dotprod;
++        pixf->sad_x4[PIXEL_16x16] = x264_pixel_sad_x4_16x16_neon_dotprod;
++        pixf->ssd[PIXEL_8x4]  = x264_pixel_ssd_8x4_neon_dotprod;
++        pixf->ssd[PIXEL_8x8] = x264_pixel_ssd_8x8_neon_dotprod;
++        pixf->ssd[PIXEL_8x16]  = x264_pixel_ssd_8x16_neon_dotprod;
++        pixf->ssd[PIXEL_16x16] = x264_pixel_ssd_16x16_neon_dotprod;
++        pixf->ssd[PIXEL_16x8]  = x264_pixel_ssd_16x8_neon_dotprod;
++        pixf->vsad = x264_pixel_vsad_neon_dotprod;
++    }
++#endif // HAVE_DOTPROD
++
+ #if HAVE_SVE
+     if( cpu&X264_CPU_SVE )
+     {
+diff --git a/common/pixel.h b/common/pixel.h
+index 29230d8a..4ab89b80 100644
+--- a/common/pixel.h
++++ b/common/pixel.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel.c: pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2004-2024 x264 project
++ * Copyright (C) 2004-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Fiona Glaser <fiona@x264.com>
+diff --git a/common/ppc/dct.c b/common/ppc/dct.c
+index 1fea8bda..99c97a03 100644
+--- a/common/ppc/dct.c
++++ b/common/ppc/dct.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * dct.c: ppc transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Guillaume Poirier <gpoirier@mplayerhq.hu>
+  *          Eric Petit <eric.petit@lapsus.org>
+diff --git a/common/ppc/dct.h b/common/ppc/dct.h
+index a0646e9b..8a87bfcf 100644
+--- a/common/ppc/dct.h
++++ b/common/ppc/dct.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * dct.h: ppc transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Eric Petit <eric.petit@lapsus.org>
+  *          Guillaume Poirier <gpoirier@mplayerhq.hu>
+diff --git a/common/ppc/deblock.c b/common/ppc/deblock.c
+index 7ea2926d..d7fc9f6e 100644
+--- a/common/ppc/deblock.c
++++ b/common/ppc/deblock.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * deblock.c: ppc deblocking
+  *****************************************************************************
+- * Copyright (C) 2007-2024 x264 project
++ * Copyright (C) 2007-2025 x264 project
+  *
+  * Authors: Guillaume Poirier <gpoirier@mplayerhq.hu>
+  *
+diff --git a/common/ppc/deblock.h b/common/ppc/deblock.h
+index 34c8ac86..d5fae6a4 100644
+--- a/common/ppc/deblock.h
++++ b/common/ppc/deblock.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * deblock.h: ppc deblocking
+  *****************************************************************************
+- * Copyright (C) 2017-2024 x264 project
++ * Copyright (C) 2017-2025 x264 project
+  *
+  * Authors: Anton Mitrofanov <BugMaster@narod.ru>
+  *
+diff --git a/common/ppc/mc.c b/common/ppc/mc.c
+index cc0f2cee..87482ea6 100644
+--- a/common/ppc/mc.c
++++ b/common/ppc/mc.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc.c: ppc motion compensation
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Eric Petit <eric.petit@lapsus.org>
+  *          Guillaume Poirier <gpoirier@mplayerhq.hu>
+diff --git a/common/ppc/mc.h b/common/ppc/mc.h
+index eff75d94..678a6af9 100644
+--- a/common/ppc/mc.h
++++ b/common/ppc/mc.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc.h: ppc motion compensation
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Eric Petit <eric.petit@lapsus.org>
+  *
+diff --git a/common/ppc/pixel.c b/common/ppc/pixel.c
+index 574f75cf..3d4de59f 100644
+--- a/common/ppc/pixel.c
++++ b/common/ppc/pixel.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel.c: ppc pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Eric Petit <eric.petit@lapsus.org>
+  *          Guillaume Poirier <gpoirier@mplayerhq.hu>
+diff --git a/common/ppc/pixel.h b/common/ppc/pixel.h
+index 7342fdfb..84fa9bcb 100644
+--- a/common/ppc/pixel.h
++++ b/common/ppc/pixel.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel.h: ppc pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Eric Petit <eric.petit@lapsus.org>
+  *
+diff --git a/common/ppc/ppccommon.h b/common/ppc/ppccommon.h
+index 2298f5e2..23e8761d 100644
+--- a/common/ppc/ppccommon.h
++++ b/common/ppc/ppccommon.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * ppccommon.h: ppc utility macros
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Eric Petit <eric.petit@lapsus.org>
+  *
+diff --git a/common/ppc/predict.c b/common/ppc/predict.c
+index 528fc05d..25cbb963 100644
+--- a/common/ppc/predict.c
++++ b/common/ppc/predict.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict.c: ppc intra prediction
+  *****************************************************************************
+- * Copyright (C) 2007-2024 x264 project
++ * Copyright (C) 2007-2025 x264 project
+  *
+  * Authors: Guillaume Poirier <gpoirier@mplayerhq.hu>
+  *
+diff --git a/common/ppc/predict.h b/common/ppc/predict.h
+index 0713c086..99ac3c00 100644
+--- a/common/ppc/predict.h
++++ b/common/ppc/predict.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict.h: ppc intra prediction
+  *****************************************************************************
+- * Copyright (C) 2007-2024 x264 project
++ * Copyright (C) 2007-2025 x264 project
+  *
+  * Authors: Guillaume Poirier <gpoirier@mplayerhq.hu>
+  *
+diff --git a/common/ppc/quant.c b/common/ppc/quant.c
+index 00c7a290..0d71960f 100644
+--- a/common/ppc/quant.c
++++ b/common/ppc/quant.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * quant.c: ppc quantization
+  *****************************************************************************
+- * Copyright (C) 2007-2024 x264 project
++ * Copyright (C) 2007-2025 x264 project
+  *
+  * Authors: Guillaume Poirier <gpoirier@mplayerhq.hu>
+  *
+diff --git a/common/ppc/quant.h b/common/ppc/quant.h
+index 6a1084e4..e148004e 100644
+--- a/common/ppc/quant.h
++++ b/common/ppc/quant.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * quant.h: ppc quantization
+  *****************************************************************************
+- * Copyright (C) 2007-2024 x264 project
++ * Copyright (C) 2007-2025 x264 project
+  *
+  * Authors: Guillaume Poirier <gpoirier@mplayerhq.hu>
+  *
+diff --git a/common/predict.c b/common/predict.c
+index 8aa3b1f8..61cbb1ad 100644
+--- a/common/predict.c
++++ b/common/predict.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict.c: intra prediction
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/predict.h b/common/predict.h
+index 55afa50b..6e41cd35 100644
+--- a/common/predict.h
++++ b/common/predict.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict.h: intra prediction
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/common/quant.c b/common/quant.c
+index 262c5c52..21bb2955 100644
+--- a/common/quant.c
++++ b/common/quant.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * quant.c: quantization and level-run
+  *****************************************************************************
+- * Copyright (C) 2005-2024 x264 project
++ * Copyright (C) 2005-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Fiona Glaser <fiona@x264.com>
+diff --git a/common/quant.h b/common/quant.h
+index bf48da95..4e59726b 100644
+--- a/common/quant.h
++++ b/common/quant.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * quant.h: quantization and level-run
+  *****************************************************************************
+- * Copyright (C) 2005-2024 x264 project
++ * Copyright (C) 2005-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Fiona Glaser <fiona@x264.com>
+diff --git a/common/rectangle.c b/common/rectangle.c
+index f4dc07d3..afd34577 100644
+--- a/common/rectangle.c
++++ b/common/rectangle.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * rectangle.c: rectangle filling
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Fiona Glaser <fiona@x264.com>
+  *
+diff --git a/common/rectangle.h b/common/rectangle.h
+index 6a3201af..2dab4f7a 100644
+--- a/common/rectangle.h
++++ b/common/rectangle.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * rectangle.h: rectangle filling
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Fiona Glaser <fiona@x264.com>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/set.c b/common/set.c
+index 81c7810d..b918a8f9 100644
+--- a/common/set.c
++++ b/common/set.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * set.c: quantization init
+  *****************************************************************************
+- * Copyright (C) 2005-2024 x264 project
++ * Copyright (C) 2005-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *
+diff --git a/common/set.h b/common/set.h
+index d9c6641d..35816b6b 100644
+--- a/common/set.h
++++ b/common/set.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * set.h: quantization init
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/common/tables.c b/common/tables.c
+index b71f23f7..c6095be7 100644
+--- a/common/tables.c
++++ b/common/tables.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * tables.c: const tables
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/tables.h b/common/tables.h
+index 69ac2186..b081908d 100644
+--- a/common/tables.h
++++ b/common/tables.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * tables.h: const tables
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/threadpool.c b/common/threadpool.c
+index f53bba26..fadd02ae 100644
+--- a/common/threadpool.c
++++ b/common/threadpool.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * threadpool.c: thread pooling
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *
+diff --git a/common/threadpool.h b/common/threadpool.h
+index d2d3a238..f9994dfa 100644
+--- a/common/threadpool.h
++++ b/common/threadpool.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * threadpool.h: thread pooling
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *
+diff --git a/common/vlc.c b/common/vlc.c
+index b118c8a6..9cb9d03c 100644
+--- a/common/vlc.c
++++ b/common/vlc.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * vlc.c : vlc tables
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Fiona Glaser <fiona@x264.com>
+diff --git a/common/win32thread.c b/common/win32thread.c
+index b1bc6f98..f6b3b4e4 100644
+--- a/common/win32thread.c
++++ b/common/win32thread.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * win32thread.c: windows threading
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *          Pegasys Inc. <http://www.pegasys-inc.com>
+diff --git a/common/win32thread.h b/common/win32thread.h
+index 30f688d5..27a657ba 100644
+--- a/common/win32thread.h
++++ b/common/win32thread.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * win32thread.h: windows threading
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *
+diff --git a/common/x86/bitstream-a.asm b/common/x86/bitstream-a.asm
+index 50892627..175b11dd 100644
+--- a/common/x86/bitstream-a.asm
++++ b/common/x86/bitstream-a.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* bitstream-a.asm: x86 bitstream functions
+ ;*****************************************************************************
+-;* Copyright (C) 2010-2024 x264 project
++;* Copyright (C) 2010-2025 x264 project
+ ;*
+ ;* Authors: Fiona Glaser <fiona@x264.com>
+ ;*          Henrik Gramner <henrik@gramner.com>
+diff --git a/common/x86/bitstream.h b/common/x86/bitstream.h
+index c9e79823..ff8a22ca 100644
+--- a/common/x86/bitstream.h
++++ b/common/x86/bitstream.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * bitstream.h: x86 bitstream functions
+  *****************************************************************************
+- * Copyright (C) 2017-2024 x264 project
++ * Copyright (C) 2017-2025 x264 project
+  *
+  * Authors: Anton Mitrofanov <BugMaster@narod.ru>
+  *
+diff --git a/common/x86/cabac-a.asm b/common/x86/cabac-a.asm
+index 31e624b7..fcdee390 100644
+--- a/common/x86/cabac-a.asm
++++ b/common/x86/cabac-a.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* cabac-a.asm: x86 cabac
+ ;*****************************************************************************
+-;* Copyright (C) 2008-2024 x264 project
++;* Copyright (C) 2008-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*          Fiona Glaser <fiona@x264.com>
+diff --git a/common/x86/const-a.asm b/common/x86/const-a.asm
+index a489f87a..63aedc33 100644
+--- a/common/x86/const-a.asm
++++ b/common/x86/const-a.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* const-a.asm: x86 global constants
+ ;*****************************************************************************
+-;* Copyright (C) 2010-2024 x264 project
++;* Copyright (C) 2010-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*          Fiona Glaser <fiona@x264.com>
+diff --git a/common/x86/cpu-a.asm b/common/x86/cpu-a.asm
+index bdcacc31..74bdb77c 100644
+--- a/common/x86/cpu-a.asm
++++ b/common/x86/cpu-a.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* cpu-a.asm: x86 cpu utilities
+ ;*****************************************************************************
+-;* Copyright (C) 2003-2024 x264 project
++;* Copyright (C) 2003-2025 x264 project
+ ;*
+ ;* Authors: Laurent Aimar <fenrir@via.ecp.fr>
+ ;*          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/x86/dct-32.asm b/common/x86/dct-32.asm
+index 11e47678..065dc602 100644
+--- a/common/x86/dct-32.asm
++++ b/common/x86/dct-32.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* dct-32.asm: x86_32 transform and zigzag
+ ;*****************************************************************************
+-;* Copyright (C) 2003-2024 x264 project
++;* Copyright (C) 2003-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*          Holger Lubitz <holger@lubitz.org>
+diff --git a/common/x86/dct-64.asm b/common/x86/dct-64.asm
+index 249c9e73..8dc2299d 100644
+--- a/common/x86/dct-64.asm
++++ b/common/x86/dct-64.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* dct-64.asm: x86_64 transform and zigzag
+ ;*****************************************************************************
+-;* Copyright (C) 2003-2024 x264 project
++;* Copyright (C) 2003-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*          Holger Lubitz <holger@lubitz.org>
+diff --git a/common/x86/dct-a.asm b/common/x86/dct-a.asm
+index 18e2d3e2..ee4197aa 100644
+--- a/common/x86/dct-a.asm
++++ b/common/x86/dct-a.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* dct-a.asm: x86 transform and zigzag
+ ;*****************************************************************************
+-;* Copyright (C) 2003-2024 x264 project
++;* Copyright (C) 2003-2025 x264 project
+ ;*
+ ;* Authors: Holger Lubitz <holger@lubitz.org>
+ ;*          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/x86/dct.h b/common/x86/dct.h
+index c03dc3cb..755da382 100644
+--- a/common/x86/dct.h
++++ b/common/x86/dct.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * dct.h: x86 transform and zigzag
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/common/x86/deblock-a.asm b/common/x86/deblock-a.asm
+index c4880ad0..0addc6fa 100644
+--- a/common/x86/deblock-a.asm
++++ b/common/x86/deblock-a.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* deblock-a.asm: x86 deblocking
+ ;*****************************************************************************
+-;* Copyright (C) 2005-2024 x264 project
++;* Copyright (C) 2005-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*          Fiona Glaser <fiona@x264.com>
+diff --git a/common/x86/deblock.h b/common/x86/deblock.h
+index 76a55fa9..0698b97c 100644
+--- a/common/x86/deblock.h
++++ b/common/x86/deblock.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * deblock.h: x86 deblocking
+  *****************************************************************************
+- * Copyright (C) 2017-2024 x264 project
++ * Copyright (C) 2017-2025 x264 project
+  *
+  * Authors: Anton Mitrofanov <BugMaster@narod.ru>
+  *
+diff --git a/common/x86/mc-a.asm b/common/x86/mc-a.asm
+index c077bf4c..1da3599e 100644
+--- a/common/x86/mc-a.asm
++++ b/common/x86/mc-a.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* mc-a.asm: x86 motion compensation
+ ;*****************************************************************************
+-;* Copyright (C) 2003-2024 x264 project
++;* Copyright (C) 2003-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*          Fiona Glaser <fiona@x264.com>
+diff --git a/common/x86/mc-a2.asm b/common/x86/mc-a2.asm
+index b808fff6..31bb0ef5 100644
+--- a/common/x86/mc-a2.asm
++++ b/common/x86/mc-a2.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* mc-a2.asm: x86 motion compensation
+ ;*****************************************************************************
+-;* Copyright (C) 2005-2024 x264 project
++;* Copyright (C) 2005-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*          Fiona Glaser <fiona@x264.com>
+diff --git a/common/x86/mc-c.c b/common/x86/mc-c.c
+index 68d0e1dd..c08fcc66 100644
+--- a/common/x86/mc-c.c
++++ b/common/x86/mc-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc-c.c: x86 motion compensation
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/x86/mc.h b/common/x86/mc.h
+index 9242dabb..92e66785 100644
+--- a/common/x86/mc.h
++++ b/common/x86/mc.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mc.h: x86 motion compensation
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/common/x86/pixel-32.asm b/common/x86/pixel-32.asm
+index f742bd55..daf635d7 100644
+--- a/common/x86/pixel-32.asm
++++ b/common/x86/pixel-32.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* pixel-32.asm: x86_32 pixel metrics
+ ;*****************************************************************************
+-;* Copyright (C) 2003-2024 x264 project
++;* Copyright (C) 2003-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/common/x86/pixel-a.asm b/common/x86/pixel-a.asm
+index e74393ea..7c6b453e 100644
+--- a/common/x86/pixel-a.asm
++++ b/common/x86/pixel-a.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* pixel.asm: x86 pixel metrics
+ ;*****************************************************************************
+-;* Copyright (C) 2003-2024 x264 project
++;* Copyright (C) 2003-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*          Holger Lubitz <holger@lubitz.org>
+diff --git a/common/x86/pixel.h b/common/x86/pixel.h
+index 8a6ed4ef..ceb505a8 100644
+--- a/common/x86/pixel.h
++++ b/common/x86/pixel.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * pixel.h: x86 pixel metrics
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/x86/predict-a.asm b/common/x86/predict-a.asm
+index d9f39525..08e2a52d 100644
+--- a/common/x86/predict-a.asm
++++ b/common/x86/predict-a.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* predict-a.asm: x86 intra prediction
+ ;*****************************************************************************
+-;* Copyright (C) 2005-2024 x264 project
++;* Copyright (C) 2005-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*          Holger Lubitz <holger@lubitz.org>
+diff --git a/common/x86/predict-c.c b/common/x86/predict-c.c
+index 1845db1d..837f5ef8 100644
+--- a/common/x86/predict-c.c
++++ b/common/x86/predict-c.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict-c.c: intra prediction
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/x86/predict.h b/common/x86/predict.h
+index ee3bc84d..17863523 100644
+--- a/common/x86/predict.h
++++ b/common/x86/predict.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * predict.h: x86 intra prediction
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/x86/quant-a.asm b/common/x86/quant-a.asm
+index 12dad607..3b65ec29 100644
+--- a/common/x86/quant-a.asm
++++ b/common/x86/quant-a.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* quant-a.asm: x86 quantization and level-run
+ ;*****************************************************************************
+-;* Copyright (C) 2005-2024 x264 project
++;* Copyright (C) 2005-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*          Fiona Glaser <fiona@x264.com>
+diff --git a/common/x86/quant.h b/common/x86/quant.h
+index 7b609ae8..7aefb652 100644
+--- a/common/x86/quant.h
++++ b/common/x86/quant.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * quant.h: x86 quantization and level-run
+  *****************************************************************************
+- * Copyright (C) 2005-2024 x264 project
++ * Copyright (C) 2005-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Fiona Glaser <fiona@x264.com>
+diff --git a/common/x86/sad-a.asm b/common/x86/sad-a.asm
+index e2bd24b7..abb3e4e7 100644
+--- a/common/x86/sad-a.asm
++++ b/common/x86/sad-a.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* sad-a.asm: x86 sad functions
+ ;*****************************************************************************
+-;* Copyright (C) 2003-2024 x264 project
++;* Copyright (C) 2003-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*          Fiona Glaser <fiona@x264.com>
+diff --git a/common/x86/sad16-a.asm b/common/x86/sad16-a.asm
+index fd2d0c0b..e3c00cb4 100644
+--- a/common/x86/sad16-a.asm
++++ b/common/x86/sad16-a.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* sad16-a.asm: x86 high depth sad functions
+ ;*****************************************************************************
+-;* Copyright (C) 2010-2024 x264 project
++;* Copyright (C) 2010-2025 x264 project
+ ;*
+ ;* Authors: Oskar Arvidsson <oskar@irock.se>
+ ;*          Henrik Gramner <henrik@gramner.com>
+diff --git a/common/x86/trellis-64.asm b/common/x86/trellis-64.asm
+index a6cf26b3..fcdd839e 100644
+--- a/common/x86/trellis-64.asm
++++ b/common/x86/trellis-64.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* trellis-64.asm: x86_64 trellis quantization
+ ;*****************************************************************************
+-;* Copyright (C) 2012-2024 x264 project
++;* Copyright (C) 2012-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*
+diff --git a/common/x86/util.h b/common/x86/util.h
+index b2c79416..b28520d2 100644
+--- a/common/x86/util.h
++++ b/common/x86/util.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * util.h: x86 inline asm
+  *****************************************************************************
+- * Copyright (C) 2008-2024 x264 project
++ * Copyright (C) 2008-2025 x264 project
+  *
+  * Authors: Fiona Glaser <fiona@x264.com>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/common/x86/x86inc.asm b/common/x86/x86inc.asm
+index 486bad68..77d09997 100644
+--- a/common/x86/x86inc.asm
++++ b/common/x86/x86inc.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* x86inc.asm: x264asm abstraction layer
+ ;*****************************************************************************
+-;* Copyright (C) 2005-2024 x264 project
++;* Copyright (C) 2005-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*          Henrik Gramner <henrik@gramner.com>
+diff --git a/common/x86/x86util.asm b/common/x86/x86util.asm
+index 8226e7af..16c9d0fe 100644
+--- a/common/x86/x86util.asm
++++ b/common/x86/x86util.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* x86util.asm: x86 utility macros
+ ;*****************************************************************************
+-;* Copyright (C) 2008-2024 x264 project
++;* Copyright (C) 2008-2025 x264 project
+ ;*
+ ;* Authors: Holger Lubitz <holger@lubitz.org>
+ ;*          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/config.guess b/config.guess
+index 7eec710e..8dc6d6b2 100755
+--- a/config.guess
++++ b/config.guess
+@@ -138,6 +138,13 @@ UNAME_RELEASE=`(uname -r) 2>/dev/null` || UNAME_RELEASE=unknown
+ UNAME_SYSTEM=`(uname -s) 2>/dev/null`  || UNAME_SYSTEM=unknown
+ UNAME_VERSION=`(uname -v) 2>/dev/null` || UNAME_VERSION=unknown
+ 
++# msys2 always reports `uname -m` as `x86_64`
++# but `$MSYSTEM_CARCH` reports the real toolchain target architecture of the msys2 environment
++# Link: https://github.com/msys2/msys2-runtime/issues/171
++if test "$MSYSTEM_CARCH" != ""; then
++	UNAME_MACHINE="$MSYSTEM_CARCH"
++fi
++
+ # Note: order is significant - the case branches are not exclusive.
+ 
+ case "${UNAME_MACHINE}:${UNAME_SYSTEM}:${UNAME_RELEASE}:${UNAME_VERSION}" in
+@@ -875,6 +882,9 @@ EOF
+ 	UNAME_MACHINE=aarch64_be
+ 	echo ${UNAME_MACHINE}-unknown-linux-gnu
+ 	exit ;;
++    riscv64:Linux:*:*)
++	echo ${UNAME_MACHINE}-unknown-linux-gnu
++	exit ;;
+     alpha:Linux:*:*)
+ 	case `sed -n '/^cpu model/s/^.*: \(.*\)/\1/p' < /proc/cpuinfo` in
+ 	  EV5)   UNAME_MACHINE=alphaev5 ;;
+diff --git a/config.sub b/config.sub
+index 3093784c..8355f6bc 100755
+--- a/config.sub
++++ b/config.sub
+@@ -255,6 +255,7 @@ case $basic_machine in
+ 	# Some are omitted here because they have special meanings below.
+ 	1750a | 580 \
+ 	| a29k \
++	| riscv64 \
+ 	| aarch64 | aarch64_be | arm64 \
+ 	| alpha | alphaev[4-8] | alphaev56 | alphaev6[78] | alphapca5[67] \
+ 	| alpha64 | alpha64ev[4-8] | alpha64ev56 | alpha64ev6[78] | alpha64pca5[67] \
+@@ -370,6 +371,7 @@ case $basic_machine in
+ 	# Recognize the basic CPU types with company name.
+ 	580-* \
+ 	| a29k-* \
++	| riscv64-* \
+ 	| aarch64-* | aarch64_be-* | arm64*-* \
+ 	| alpha-* | alphaev[4-8]-* | alphaev56-* | alphaev6[78]-* \
+ 	| alpha64-* | alpha64ev[4-8]-* | alpha64ev56-* | alpha64ev6[78]-* \
+diff --git a/configure b/configure
+index 197516f3..e6e6ea5b 100755
+--- a/configure
++++ b/configure
+@@ -247,6 +247,18 @@ as_check() {
+     return $res
+ }
+ 
++as_archext_check() {
++    feature="$1"
++    instr="$2"
++    feature_upper="$(echo $feature | tr a-z A-Z)"
++    header=".arch $as_arch_level ${NL}"
++    if as_check "$header .arch_extension $feature" ; then
++        define HAVE_AS_ARCHEXT_${feature_upper}_DIRECTIVE
++        header="$header .arch_extension $feature ${NL}"
++    fi
++    as_check "$header $instr" && define HAVE_${feature_upper}
++}
++
+ rc_check() {
+     log_check "whether $RC works"
+     echo "$1" > conftest.rc
+@@ -432,8 +444,11 @@ NL="
+ # list of all preprocessor HAVE values we can define
+ CONFIG_HAVE="MALLOC_H ALTIVEC ALTIVEC_H MMX ARMV6 ARMV6T2 NEON AARCH64 BEOSTHREAD POSIXTHREAD WIN32THREAD THREAD LOG2F SWSCALE \
+              LAVF FFMS GPAC AVS GPL VECTOREXT INTERLACED CPU_COUNT OPENCL THP LSMASH X86_INLINE_ASM AS_FUNC INTEL_DISPATCHER \
+-             AVI_OUTPUT MSA LSX MMAP WINRT VSX ARM_INLINE_ASM STRTOK_R CLOCK_GETTIME BITDEPTH8 BITDEPTH10 \
+-             SVE SVE2"
++             AVI_OUTPUT MSA LSX MMAP WINRT VSX ARM_INLINE_ASM STRTOK_R CLOCK_GETTIME BITDEPTH8 BITDEPTH10 ELF_AUX_INFO GETAUXVAL \
++             SYSCONF SYNC_FETCH_AND_ADD \
++             DOTPROD I8MM SVE SVE2 \
++             RISCV64 RVV \
++             AS_ARCHEXT_DOTPROD_DIRECTIVE AS_ARCHEXT_I8MM_DIRECTIVE AS_ARCHEXT_SVE_DIRECTIVE AS_ARCHEXT_SVE2_DIRECTIVE"
+ 
+ # list of all preprocessor HAVE values we can define for audio stuff
+ CONFIG_AUDIO_HAVE="AUDIO LAME QT_AAC FAAC AMRWB_3GPP NONFREE"
+@@ -698,6 +713,9 @@ if [ $compiler = GNU ]; then
+     if cc_check '' -Werror=ignored-attributes ; then
+         CHECK_CFLAGS="$CHECK_CFLAGS -Werror=ignored-attributes"
+     fi
++    if cc_check '' -Werror=implicit-function-declaration ; then
++        CHECK_CFLAGS="$CHECK_CFLAGS -Werror=implicit-function-declaration"
++    fi
+ fi
+ 
+ libm=""
+@@ -713,6 +731,10 @@ case $host_os in
+             cc_check "" -mdynamic-no-pic && CFLAGS="$CFLAGS -mdynamic-no-pic"
+         fi
+         ;;
++    dragonfly*)
++        SYS="DRAGONFLY"
++        libm="-lm"
++        ;;
+     freebsd*)
+         SYS="FREEBSD"
+         libm="-lm"
+@@ -916,6 +938,12 @@ case $host_cpu in
+             AS="${AS-${CC}}"
+         fi
+         ;;
++    riscv64)
++        ARCH="RISCV64"
++        stack_alignment=16
++
++        AS="${AS-${CC}}"
++        ;;
+     s390|s390x)
+         ARCH="S390"
+         ;;
+@@ -1050,20 +1078,42 @@ if [ $asm = auto -a $ARCH = ARM ] ; then
+ fi
+ 
+ if [ $asm = auto -a $ARCH = AARCH64 ] ; then
+-    if [ $compiler = CL ] && cpp_check '' '' 'defined(_M_ARM64)' ; then
+-        define HAVE_AARCH64
+-        define HAVE_NEON
+-    elif cc_check '' '' '__asm__("cmeq v0.8h, v0.8h, #0");' ; then
++    if [ $compiler != CL ] ; then
++        ASFLAGS="$ASFLAGS -c"
++    fi
++    if as_check "cmeq v0.8h, v0.8h, #0" ; then
+         define HAVE_AARCH64
+         define HAVE_NEON
+-        cc_check '' '' '__asm__(".arch armv8.2-a+sve  \n ptrue p0.b, vl16");'         && define HAVE_SVE
+-        cc_check '' '' '__asm__(".arch armv8.2-a+sve2 \n smlalb z10.s, z2.h, z1.h");' && define HAVE_SVE2
+-        ASFLAGS="$ASFLAGS -c"
+     else
+         echo "no NEON support, try adding -mfpu=neon to CFLAGS"
+         echo "If you really want to run on such a CPU, configure with --disable-asm."
+         exit 1
+     fi
++    # Check for higher .arch levels. We only need armv8.2-a in order to
++    # enable the extensions we want below - we primarily want to control
++    # them via .arch_extension. However:
++    #
++    # Clang before version 17 (Xcode versions before 16) didn't support
++    # controlling the dotprod/i8mm extensions via .arch_extension; thus
++    # try to enable them via the .arch level as well.
++    as_arch_level="armv8-a"
++    for level in armv8.2-a armv8.4-a armv8.6-a; do
++        as_check ".arch ${level}" && as_arch_level="$level"
++    done
++    # Clang before version 17 (Xcode versions before 16) also had a bug
++    # (https://github.com/llvm/llvm-project/issues/32220) causing a plain
++    # ".arch <level>" to not have any effect unless it had an extra
++    # "+<feature>" included - but it was activated on the next
++    # ".arch_extension" directive. Check if we can include "+crc" as dummy
++    # feature to make the .arch directive behave as expected and take
++    # effect right away.
++    as_check ".arch ${as_arch_level}+crc" && as_arch_level="${as_arch_level}+crc"
++    define AS_ARCH_LEVEL "$as_arch_level"
++
++    as_archext_check dotprod "udot v0.4s, v0.16b, v0.16b"
++    as_archext_check i8mm    "usdot v0.4s, v0.16b, v0.16b"
++    as_archext_check sve     "ptrue p0.b, vl16"
++    as_archext_check sve2    "smlalb z10.s, z2.h, z1.h"
+ fi
+ 
+ if [ $asm = auto -a \( $ARCH = ARM -o $ARCH = AARCH64 \) ] ; then
+@@ -1085,6 +1135,15 @@ if [ $asm = auto -a $ARCH = MIPS ] ; then
+     fi
+ fi
+ 
++if [ $asm = auto -a $ARCH = RISCV64 ] ; then
++    define HAVE_RISCV64
++    if cc_check '' '' '__asm__(".option arch, +v\n" "vsetvli t0, a0, e32, m1, ta, ma");' ; then
++        define HAVE_RVV
++    fi
++
++    ASFLAGS="$ASFLAGS -c"
++fi
++
+ if [ $asm = auto -a $ARCH = LOONGARCH ] ; then
+     if cc_check '' '' '__asm__("xvadd.b $xr0, $xr1, $xr2");' ; then
+         # Use HAVE_LSX as the base flag, compiler support LA SIMD(LSX and LASX)
+@@ -1179,6 +1238,10 @@ if [ "$thread" = "posix" ]; then
+ fi
+ [ "$thread" != "no" ] && define HAVE_THREAD
+ 
++if cc_check '' '' 'int *val; __sync_fetch_and_add(&val, 1);' ; then
++    define HAVE_SYNC_FETCH_AND_ADD
++fi
++
+ if cc_check 'math.h' '' 'volatile float x = 2; return log2f(x);' ; then
+     define HAVE_LOG2F
+ fi
+@@ -1194,6 +1257,18 @@ elif cc_check 'time.h' '-lrt' 'clock_gettime(CLOCK_MONOTONIC, 0);' ; then
+     LDFLAGS="$LDFLAGS -lrt"
+ fi
+ 
++if cc_check 'sys/auxv.h' '' 'getauxval(AT_HWCAP);' ; then
++    define HAVE_GETAUXVAL
++fi
++
++if cc_check 'sys/auxv.h' '' 'unsigned long auxv = 0; elf_aux_info(AT_HWCAP, &auxv, sizeof(auxv));' ; then
++    define HAVE_ELF_AUX_INFO
++fi
++
++if cc_check 'unistd.h' '' 'sysconf(0);' ; then
++    define HAVE_SYSCONF
++fi
++
+ if [ "$SYS" != "WINDOWS" ] && cpp_check "sys/mman.h unistd.h" "" "defined(MAP_PRIVATE)"; then
+     define HAVE_MMAP
+ fi
+@@ -1520,7 +1595,7 @@ if [ "$avs" = "auto" ] ; then
+         define HAVE_AVS
+         AVS_LIBS="-ldl"
+         LDFLAGSCLI="$AVS_LIBS $LDFLAGSCLI"
+-    elif [ "$SYS" = "FREEBSD" -o "$SYS" = "OPENBSD" -o "$SYS" = "NETBSD" -o "$SYS" = "HAIKU" ] ; then
++    elif [ "$SYS" = "DRAGONFLY" -o "$SYS" = "FREEBSD" -o "$SYS" = "NETBSD" -o "$SYS" = "OPENBSD" -o "$SYS" = "HAIKU" ] ; then
+         avs="yes"
+         define HAVE_AVS
+         # dlopen is exported from libc on both *BSD and Haiku
+@@ -1576,7 +1651,7 @@ if [ $SYS = WINDOWS -a $ARCH = X86 -a $compiler = GNU ] ; then
+     cc_check '' -fno-zero-initialized-in-bss && CFLAGS="$CFLAGS -fno-zero-initialized-in-bss"
+ fi
+ 
+-if cc_check "stdio.h" "" "fseeko(stdin,0,0);" ; then
++if cc_check "stdio.h" "-D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64" "fseeko(stdin,0,0);" ; then
+     define fseek fseeko
+     define ftell ftello
+ elif cc_check "stdio.h" "" "fseeko64(stdin,0,0);" ; then
+@@ -1676,9 +1751,9 @@ else
+     CLI_LIBX264='$(LIBX264)'
+ fi
+ 
+-DEPMM="${QPRE}MM"
+-DEPMT="${QPRE}MT"
+ if [ $compiler_style = MS ]; then
++    DEPFLAGS=""
++    DEPCMD='@$(SRCPATH)/tools/msvsdepend.sh "$(CC)" "$(CFLAGS)" "$<" "$@" > $(@:.o=.d)'
+     AR="lib.exe -nologo -out:"
+     LD="link.exe -out:"
+     if [ $compiler = ICL ]; then
+@@ -1702,7 +1777,8 @@ if [ $compiler_style = MS ]; then
+         CFLAGS="-DNDEBUG $CFLAGS"
+     fi
+ else # gcc/icc
+-    DEPMM="$DEPMM -g0"
++    DEPFLAGS="${QPRE}MMD ${QPRE}MF"' $(@:.o=.d)'
++    DEPCMD=""
+     AR="$AR rc "
+     LD="$CC -o "
+     LIBX264=libx264.a
+@@ -1755,8 +1831,8 @@ CFLAGSSO=$CFLAGSSO
+ CFLAGSCLI=$CFLAGSCLI
+ COMPILER=$compiler
+ COMPILER_STYLE=$compiler_style
+-DEPMM=$DEPMM
+-DEPMT=$DEPMT
++DEPCMD=$DEPCMD
++DEPFLAGS=$DEPFLAGS
+ LD=$LD
+ LDFLAGS=$LDFLAGS
+ LDFLAGSCLI=$LDFLAGSCLI
+@@ -1901,7 +1977,7 @@ cat conftest.log >> config.log
+ cat conftest.log
+ 
+ [ "$SRCPATH" != "." ] && ln -sf ${SRCPATH}/Makefile ./Makefile
+-mkdir -p audio/encoders common/{aarch64,arm,mips,ppc,x86,loongarch} encoder extras filters/{audio,video} input/audio output tools
++mkdir -p audio/encoders common/{aarch64,arm,mips,ppc,x86,loongarch,riscv64} encoder extras filters/{audio,video} input/audio output tools
+ 
+ echo
+ echo "You can run 'make' or 'make fprofiled' now."
+diff --git a/encoder/analyse.c b/encoder/analyse.c
+index e35d3c4e..b1040299 100644
+--- a/encoder/analyse.c
++++ b/encoder/analyse.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * analyse.c: macroblock analysis
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/encoder/analyse.h b/encoder/analyse.h
+index 44c0a70f..ad318c93 100644
+--- a/encoder/analyse.h
++++ b/encoder/analyse.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * analyse.h: macroblock analysis
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/encoder/api.c b/encoder/api.c
+index 20b14419..da991063 100644
+--- a/encoder/api.c
++++ b/encoder/api.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * api.c: bit depth independent interface
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Vittorio Giovara <vittorio.giovara@gmail.com>
+  *          Luca Barbato <lu_zero@gentoo.org>
+diff --git a/encoder/cabac.c b/encoder/cabac.c
+index b96ee812..691aff5f 100644
+--- a/encoder/cabac.c
++++ b/encoder/cabac.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * cabac.c: cabac bitstream writing
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/encoder/cavlc.c b/encoder/cavlc.c
+index 74dbb75b..bdd69956 100644
+--- a/encoder/cavlc.c
++++ b/encoder/cavlc.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * cavlc.c: cavlc bitstream writing
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/encoder/encoder.c b/encoder/encoder.c
+index 0e1084d9..c3e86e57 100644
+--- a/encoder/encoder.c
++++ b/encoder/encoder.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * encoder.c: top-level encoder functions
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/encoder/lookahead.c b/encoder/lookahead.c
+index 844cc6e1..6701e46d 100644
+--- a/encoder/lookahead.c
++++ b/encoder/lookahead.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * lookahead.c: high-level lookahead functions
+  *****************************************************************************
+- * Copyright (C) 2010-2024 Avail Media and x264 project
++ * Copyright (C) 2010-2025 Avail Media and x264 project
+  *
+  * Authors: Michael Kazmier <mkazmier@availmedia.com>
+  *          Alex Giladi <agiladi@availmedia.com>
+diff --git a/encoder/macroblock.c b/encoder/macroblock.c
+index afaaa474..69c543bc 100644
+--- a/encoder/macroblock.c
++++ b/encoder/macroblock.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * macroblock.c: macroblock encoding
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/encoder/macroblock.h b/encoder/macroblock.h
+index 453cc27f..64aed592 100644
+--- a/encoder/macroblock.h
++++ b/encoder/macroblock.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * macroblock.h: macroblock encoding
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/encoder/me.c b/encoder/me.c
+index e715da08..89a039d4 100644
+--- a/encoder/me.c
++++ b/encoder/me.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * me.c: motion estimation
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/encoder/me.h b/encoder/me.h
+index 34b312f0..6d424349 100644
+--- a/encoder/me.h
++++ b/encoder/me.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * me.h: motion estimation
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/encoder/ratecontrol.c b/encoder/ratecontrol.c
+index 7f4d87b2..43ace57b 100644
+--- a/encoder/ratecontrol.c
++++ b/encoder/ratecontrol.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * ratecontrol.c: ratecontrol
+  *****************************************************************************
+- * Copyright (C) 2005-2024 x264 project
++ * Copyright (C) 2005-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Michael Niedermayer <michaelni@gmx.at>
+diff --git a/encoder/ratecontrol.h b/encoder/ratecontrol.h
+index 6f56f88e..6784d673 100644
+--- a/encoder/ratecontrol.h
++++ b/encoder/ratecontrol.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * ratecontrol.h: ratecontrol
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+diff --git a/encoder/rdo.c b/encoder/rdo.c
+index 845410f0..403c54cb 100644
+--- a/encoder/rdo.c
++++ b/encoder/rdo.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * rdo.c: rate-distortion optimization
+  *****************************************************************************
+- * Copyright (C) 2005-2024 x264 project
++ * Copyright (C) 2005-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Fiona Glaser <fiona@x264.com>
+diff --git a/encoder/set.c b/encoder/set.c
+index 83a93250..820e3cc6 100644
+--- a/encoder/set.c
++++ b/encoder/set.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * set: header writing
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+@@ -642,7 +642,7 @@ int x264_sei_version_write( x264_t *h, bs_t *s )
+                                h->param.psz_opts[0] );
+         if( h->param.i_opts_write & X264_OPTS_INFO )
+             offset += sprintf( payload + offset, "x264 - core %d%s - H.264/MPEG-4 AVC codec - "
+-                               "Copy%s 2003-2024 - http://www.videolan.org/x264.html",
++                               "Copy%s 2003-2025 - http://www.videolan.org/x264.html",
+                                X264_BUILD, X264_VERSION, HAVE_GPL?"left":"right" );
+         if( h->param.i_opts_write & X264_OPTS_POSTINFO )
+             offset += sprintf( payload + offset, " %s", h->param.psz_opts[1] );
+diff --git a/encoder/set.h b/encoder/set.h
+index d9c06f76..f79876ed 100644
+--- a/encoder/set.h
++++ b/encoder/set.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * set.h: header writing
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/encoder/slicetype-cl.c b/encoder/slicetype-cl.c
+index d9dbabab..e54d5aa3 100644
+--- a/encoder/slicetype-cl.c
++++ b/encoder/slicetype-cl.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * slicetype-cl.c: OpenCL slicetype decision code (lowres lookahead)
+  *****************************************************************************
+- * Copyright (C) 2012-2024 x264 project
++ * Copyright (C) 2012-2025 x264 project
+  *
+  * Authors: Steve Borho <sborho@multicorewareinc.com>
+  *
+diff --git a/encoder/slicetype-cl.h b/encoder/slicetype-cl.h
+index 9c8ea843..3612b409 100644
+--- a/encoder/slicetype-cl.h
++++ b/encoder/slicetype-cl.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * slicetype-cl.h: OpenCL slicetype decision code (lowres lookahead)
+  *****************************************************************************
+- * Copyright (C) 2017-2024 x264 project
++ * Copyright (C) 2017-2025 x264 project
+  *
+  * Authors: Anton Mitrofanov <BugMaster@narod.ru>
+  *
+diff --git a/encoder/slicetype.c b/encoder/slicetype.c
+index 5df6ac5d..c0db7dd7 100644
+--- a/encoder/slicetype.c
++++ b/encoder/slicetype.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * slicetype.c: lookahead analysis
+  *****************************************************************************
+- * Copyright (C) 2005-2024 x264 project
++ * Copyright (C) 2005-2025 x264 project
+  *
+  * Authors: Fiona Glaser <fiona@x264.com>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/example.c b/example.c
+index 530f0549..2ff47cda 100644
+--- a/example.c
++++ b/example.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * example.c: libx264 API usage example
+  *****************************************************************************
+- * Copyright (C) 2014-2024 x264 project
++ * Copyright (C) 2014-2025 x264 project
+  *
+  * Authors: Anton Mitrofanov <BugMaster@narod.ru>
+  *
+diff --git a/extras/intel_dispatcher.h b/extras/intel_dispatcher.h
+index f7cb2a01..1ddf9215 100644
+--- a/extras/intel_dispatcher.h
++++ b/extras/intel_dispatcher.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * intel_dispatcher.h: intel compiler cpu dispatcher override
+  *****************************************************************************
+- * Copyright (C) 2014-2024 x264 project
++ * Copyright (C) 2014-2025 x264 project
+  *
+  * Authors: Anton Mitrofanov <BugMaster@narod.ru>
+  *
+diff --git a/filters/filters.c b/filters/filters.c
+index 79c513c3..a015424c 100644
+--- a/filters/filters.c
++++ b/filters/filters.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * filters.c: common filter functions
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Diogo Franco <diogomfranco@gmail.com>
+  *          Steven Walters <kemuri9@gmail.com>
+diff --git a/filters/filters.h b/filters/filters.h
+index 6af39708..e736ae81 100644
+--- a/filters/filters.h
++++ b/filters/filters.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * filters.h: common filter functions
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Diogo Franco <diogomfranco@gmail.com>
+  *          Steven Walters <kemuri9@gmail.com>
+diff --git a/filters/video/cache.c b/filters/video/cache.c
+index be86e4f1..75dd8de6 100644
+--- a/filters/video/cache.c
++++ b/filters/video/cache.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * cache.c: cache video filter
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *
+diff --git a/filters/video/crop.c b/filters/video/crop.c
+index 8df49a8c..fe759cb8 100644
+--- a/filters/video/crop.c
++++ b/filters/video/crop.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * crop.c: crop video filter
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *          James Darnley <james.darnley@gmail.com>
+diff --git a/filters/video/depth.c b/filters/video/depth.c
+index e35eeb9e..08260e5f 100644
+--- a/filters/video/depth.c
++++ b/filters/video/depth.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * depth.c: bit-depth conversion video filter
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Oskar Arvidsson <oskar@irock.se>
+  *
+diff --git a/filters/video/fix_vfr_pts.c b/filters/video/fix_vfr_pts.c
+index 46262aae..d7a440f4 100644
+--- a/filters/video/fix_vfr_pts.c
++++ b/filters/video/fix_vfr_pts.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * fix_vfr_pts.c: vfr pts fixing video filter
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *
+diff --git a/filters/video/internal.c b/filters/video/internal.c
+index a70834c3..ac6a3a4c 100644
+--- a/filters/video/internal.c
++++ b/filters/video/internal.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * internal.c: video filter utilities
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *
+diff --git a/filters/video/internal.h b/filters/video/internal.h
+index fca8072b..45454fd5 100644
+--- a/filters/video/internal.h
++++ b/filters/video/internal.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * internal.h: video filter utilities
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *
+diff --git a/filters/video/resize.c b/filters/video/resize.c
+index e048dbcf..9abed97a 100644
+--- a/filters/video/resize.c
++++ b/filters/video/resize.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * resize.c: resize video filter
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *
+diff --git a/filters/video/select_every.c b/filters/video/select_every.c
+index 7b6cc3cc..9a430b3b 100644
+--- a/filters/video/select_every.c
++++ b/filters/video/select_every.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * select_every.c: select-every video filter
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *
+diff --git a/filters/video/source.c b/filters/video/source.c
+index f7c6b870..9d94f1fd 100644
+--- a/filters/video/source.c
++++ b/filters/video/source.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * source.c: source video filter
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *
+diff --git a/filters/video/video.c b/filters/video/video.c
+index 24243453..3c121c7f 100644
+--- a/filters/video/video.c
++++ b/filters/video/video.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * video.c: video filters
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *
+diff --git a/filters/video/video.h b/filters/video/video.h
+index 491d14e6..8380f535 100644
+--- a/filters/video/video.h
++++ b/filters/video/video.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * video.h: video filters
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *
+diff --git a/input/avs.c b/input/avs.c
+index ee7a51ac..fda42424 100644
+--- a/input/avs.c
++++ b/input/avs.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * avs.c: avisynth input
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *          Anton Mitrofanov <BugMaster@narod.ru>
+diff --git a/input/ffms.c b/input/ffms.c
+index 2f852cb3..4317a9fe 100644
+--- a/input/ffms.c
++++ b/input/ffms.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * ffms.c: ffmpegsource input
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: Mike Gurlitz <mike.gurlitz@gmail.com>
+  *          Steven Walters <kemuri9@gmail.com>
+diff --git a/input/input.c b/input/input.c
+index 677d762f..6325b4f3 100644
+--- a/input/input.c
++++ b/input/input.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * input.c: common input functions
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Steven Walters <kemuri9@gmail.com>
+  *          Henrik Gramner <henrik@gramner.com>
+diff --git a/input/input.h b/input/input.h
+index 97ab385a..1d853e39 100644
+--- a/input/input.h
++++ b/input/input.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * input.h: file input
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/input/lavf.c b/input/lavf.c
+index 1db625ac..e8e958c6 100644
+--- a/input/lavf.c
++++ b/input/lavf.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * lavf.c: libavformat input
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: Mike Gurlitz <mike.gurlitz@gmail.com>
+  *          Steven Walters <kemuri9@gmail.com>
+@@ -33,6 +33,7 @@
+ #include <libavutil/error.h>
+ #include <libavutil/mem.h>
+ #include <libavutil/pixdesc.h>
++#include <libavutil/version.h>
+ 
+ #if HAVE_AUDIO
+ #include "audio/audio.h"
+@@ -149,8 +150,13 @@ static int read_frame_internal( cli_pic_t *p_pic, lavf_hnd_t *h, int i_frame, vi
+     if( info )
+     {
+         info->fullrange  = is_fullrange;
++#if LIBAVUTIL_VERSION_MAJOR < 60
+         info->interlaced = h->frame->interlaced_frame;
+         info->tff        = h->frame->top_field_first;
++#else
++        info->interlaced = !!(h->frame->flags & AV_FRAME_FLAG_INTERLACED);
++        info->tff        = !!(h->frame->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST);
++#endif
+     }
+ 
+     if( h->vfr_input )
+diff --git a/input/raw.c b/input/raw.c
+index 3b31d64e..35e67090 100644
+--- a/input/raw.c
++++ b/input/raw.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * raw.c: raw input
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/input/thread.c b/input/thread.c
+index 7713bc5d..b235f0c1 100644
+--- a/input/thread.c
++++ b/input/thread.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * thread.c: threaded input
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/input/timecode.c b/input/timecode.c
+index 6d106392..980beac1 100644
+--- a/input/timecode.c
++++ b/input/timecode.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * timecode.c: timecode file input
+  *****************************************************************************
+- * Copyright (C) 2010-2024 x264 project
++ * Copyright (C) 2010-2025 x264 project
+  *
+  * Authors: Yusuke Nakamura <muken.the.vfrmaniac@gmail.com>
+  *
+diff --git a/input/y4m.c b/input/y4m.c
+index 109ef43a..ff7865db 100644
+--- a/input/y4m.c
++++ b/input/y4m.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * y4m.c: y4m input
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/output/flv.c b/output/flv.c
+index 65677994..ce825287 100644
+--- a/output/flv.c
++++ b/output/flv.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * flv.c: flv muxer
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: Kieran Kunhya <kieran@kunhya.com>
+  *
+diff --git a/output/flv_bytestream.c b/output/flv_bytestream.c
+index 37dd5626..40e21049 100644
+--- a/output/flv_bytestream.c
++++ b/output/flv_bytestream.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * flv_bytestream.c: flv muxer utilities
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: Kieran Kunhya <kieran@kunhya.com>
+  *
+diff --git a/output/flv_bytestream.h b/output/flv_bytestream.h
+index 56a48469..fde19a76 100644
+--- a/output/flv_bytestream.h
++++ b/output/flv_bytestream.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * flv_bytestream.h: flv muxer utilities
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: Kieran Kunhya <kieran@kunhya.com>
+  *
+diff --git a/output/matroska.c b/output/matroska.c
+index 944be4be..09323dbb 100644
+--- a/output/matroska.c
++++ b/output/matroska.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * matroska.c: matroska muxer
+  *****************************************************************************
+- * Copyright (C) 2005-2024 x264 project
++ * Copyright (C) 2005-2025 x264 project
+  *
+  * Authors: Mike Matsnev <mike@haali.su>
+  *
+diff --git a/output/matroska_ebml.c b/output/matroska_ebml.c
+index 01b80304..8877ed21 100644
+--- a/output/matroska_ebml.c
++++ b/output/matroska_ebml.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * matroska_ebml.c: matroska muxer utilities
+  *****************************************************************************
+- * Copyright (C) 2005-2024 x264 project
++ * Copyright (C) 2005-2025 x264 project
+  *
+  * Authors: Mike Matsnev <mike@haali.su>
+  *
+diff --git a/output/matroska_ebml.h b/output/matroska_ebml.h
+index c5fcffea..26260f5a 100644
+--- a/output/matroska_ebml.h
++++ b/output/matroska_ebml.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * matroska_ebml.h: matroska muxer utilities
+  *****************************************************************************
+- * Copyright (C) 2005-2024 x264 project
++ * Copyright (C) 2005-2025 x264 project
+  *
+  * Authors: Mike Matsnev <mike@haali.su>
+  *
+diff --git a/output/mp4.c b/output/mp4.c
+index 01933d64..bce2ab67 100644
+--- a/output/mp4.c
++++ b/output/mp4.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mp4.c: mp4 muxer
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/output/mp4_lsmash.c b/output/mp4_lsmash.c
+index 1e96ceba..c7e9f276 100644
+--- a/output/mp4_lsmash.c
++++ b/output/mp4_lsmash.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * mp4_lsmash.c: mp4 muxer using L-SMASH
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/output/output.h b/output/output.h
+index cbe7e554..a60c40d6 100644
+--- a/output/output.h
++++ b/output/output.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * output.h: x264 file output modules
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/output/raw.c b/output/raw.c
+index 586fb8fb..16d324d1 100644
+--- a/output/raw.c
++++ b/output/raw.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * raw.c: raw muxer
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/tools/checkasm-a.asm b/tools/checkasm-a.asm
+index 4d8f3c64..2808d98e 100644
+--- a/tools/checkasm-a.asm
++++ b/tools/checkasm-a.asm
+@@ -1,7 +1,7 @@
+ ;*****************************************************************************
+ ;* checkasm-a.asm: assembly check tool
+ ;*****************************************************************************
+-;* Copyright (C) 2008-2024 x264 project
++;* Copyright (C) 2008-2025 x264 project
+ ;*
+ ;* Authors: Loren Merritt <lorenm@u.washington.edu>
+ ;*          Henrik Gramner <henrik@gramner.com>
+diff --git a/tools/checkasm-aarch64.S b/tools/checkasm-aarch64.S
+index b19f2f76..2d7765f9 100644
+--- a/tools/checkasm-aarch64.S
++++ b/tools/checkasm-aarch64.S
+@@ -1,7 +1,7 @@
+ /****************************************************************************
+  * checkasm-aarch64.S: assembly check tool
+  *****************************************************************************
+- * Copyright (C) 2015-2024 x264 project
++ * Copyright (C) 2015-2025 x264 project
+  *
+  * Authors: Martin Storsjo <martin@martin.st>
+  *
+@@ -166,11 +166,13 @@ function checkasm_call, export=1
+ endfunc
+ 
+ #if HAVE_SVE
+-.arch armv8-a+sve
++ENABLE_SVE
+ 
+ function checkasm_sve_length, export=1
+     cntb        x0
+     lsl         x0,  x0,  #3
+     ret
+ endfunc
++
++DISABLE_SVE
+ #endif
+diff --git a/tools/checkasm-arm.S b/tools/checkasm-arm.S
+index d185aa9a..86eaa4df 100644
+--- a/tools/checkasm-arm.S
++++ b/tools/checkasm-arm.S
+@@ -1,7 +1,7 @@
+ /****************************************************************************
+  * checkasm-arm.S: assembly check tool
+  *****************************************************************************
+- * Copyright (C) 2015-2024 x264 project
++ * Copyright (C) 2015-2025 x264 project
+  *
+  * Authors: Martin Storsjo <martin@martin.st>
+  *
+diff --git a/tools/checkasm-loongarch.S b/tools/checkasm-loongarch.S
+index 716974e6..2a3187af 100644
+--- a/tools/checkasm-loongarch.S
++++ b/tools/checkasm-loongarch.S
+@@ -1,7 +1,7 @@
+ /****************************************************************************
+  * checkasm-loongarch.S: assembly check tool
+  *****************************************************************************
+- * Copyright (C) 2024 x264 project
++ * Copyright (C) 2024-2025 x264 project
+  *
+  * Authors: Xiwei Gu <guxiwei-hf@loongson.cn>
+  *
+diff --git a/tools/checkasm.c b/tools/checkasm.c
+index 22f27d3c..dc869e99 100644
+--- a/tools/checkasm.c
++++ b/tools/checkasm.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * checkasm.c: assembly check tool
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+@@ -115,6 +115,8 @@ static inline uint32_t read_time(void)
+     uint64_t b = 0;
+     asm volatile( "mrs %0, pmccntr_el0" : "=r"(b) :: "memory" );
+     a = b;
++#elif ARCH_RISCV64
++    asm volatile( "rdtime %0" : "=r"(a) :: "memory" );
+ #elif ARCH_MIPS
+     asm volatile( "rdhwr %0, $2" : "=r"(a) :: "memory" );
+ #elif ARCH_LOONGARCH
+@@ -216,8 +218,12 @@ static void print_bench(void)
+ #elif ARCH_AARCH64
+                     b->cpu&X264_CPU_SVE2 ? "sve2" :
+                     b->cpu&X264_CPU_SVE ? "sve" :
++                    b->cpu&X264_CPU_I8MM ? "i8mm" :
++                    b->cpu&X264_CPU_DOTPROD ? "dotprod" :
+                     b->cpu&X264_CPU_NEON ? "neon" :
+                     b->cpu&X264_CPU_ARMV8 ? "armv8" :
++#elif ARCH_RISCV64
++                    b->cpu&X264_CPU_RVV ? "rvv" :
+ #elif ARCH_MIPS
+                     b->cpu&X264_CPU_MSA ? "msa" :
+ #elif ARCH_LOONGARCH
+@@ -274,6 +280,10 @@ intptr_t x264_checkasm_call_noneon( intptr_t (*func)(), int *ok, ... );
+ intptr_t (*x264_checkasm_call)( intptr_t (*func)(), int *ok, ... ) = x264_checkasm_call_noneon;
+ #endif
+ 
++#if ARCH_RISCV64
++intptr_t x264_checkasm_call( intptr_t (*func)(), int *ok, ... );
++#endif
++
+ #if ARCH_LOONGARCH
+ intptr_t x264_checkasm_call( intptr_t (*func)(), int *ok, ... );
+ #endif
+@@ -3028,6 +3038,10 @@ static int check_all_flags( void )
+         ret |= add_flags( &cpu0, &cpu1, X264_CPU_ARMV8, "ARMv8" );
+     if( cpu_detect & X264_CPU_NEON )
+         ret |= add_flags( &cpu0, &cpu1, X264_CPU_NEON, "NEON" );
++    if( cpu_detect & X264_CPU_DOTPROD )
++        ret |= add_flags( &cpu0, &cpu1, X264_CPU_DOTPROD, "DOTPROD" );
++    if( cpu_detect & X264_CPU_I8MM )
++        ret |= add_flags( &cpu0, &cpu1, X264_CPU_I8MM, "I8MM" );
+ #if HAVE_SVE
+     if( cpu_detect & X264_CPU_SVE ) {
+         snprintf( buf, sizeof( buf ), "SVE (%d bits)", x264_checkasm_sve_length() );
+@@ -3038,6 +3052,9 @@ static int check_all_flags( void )
+         ret |= add_flags( &cpu0, &cpu1, X264_CPU_SVE2, buf );
+     }
+ #endif
++#elif ARCH_RISCV64
++    if( cpu_detect & X264_CPU_RVV )
++        ret |= add_flags( &cpu0, &cpu1, X264_CPU_RVV, "RVV" );
+ #elif ARCH_MIPS
+     if( cpu_detect & X264_CPU_MSA )
+         ret |= add_flags( &cpu0, &cpu1, X264_CPU_MSA, "MSA" );
+@@ -3059,7 +3076,7 @@ REALIGN_STACK int main( int argc, char **argv )
+ 
+     if( argc > 1 && !strncmp( argv[1], "--bench", 7 ) )
+     {
+-#if !ARCH_X86 && !ARCH_X86_64 && !ARCH_PPC && !ARCH_ARM && !ARCH_AARCH64 && !ARCH_MIPS && !ARCH_LOONGARCH
++#if !ARCH_X86 && !ARCH_X86_64 && !ARCH_PPC && !ARCH_ARM && !ARCH_AARCH64 && !ARCH_MIPS && !ARCH_LOONGARCH && !ARCH_RISCV64
+         fprintf( stderr, "no --bench for your cpu until you port rdtsc\n" );
+         return 1;
+ #endif
+diff --git a/tools/gas-preprocessor.pl b/tools/gas-preprocessor.pl
+index 37877565..aa3abc02 100755
+--- a/tools/gas-preprocessor.pl
++++ b/tools/gas-preprocessor.pl
+@@ -16,6 +16,7 @@ my %canonical_arch = ("aarch64" => "aarch64", "arm64" => "aarch64",
+ 
+ my %comments = ("aarch64" => '//',
+                 "arm"     => '@',
++                "ppc"     => '#',
+                 "powerpc" => '#');
+ 
+ my @gcc_cmd;
+@@ -27,6 +28,7 @@ my $as_type = "apple-gas";
+ 
+ my $fix_unreq = $^O eq "darwin";
+ my $force_thumb = 0;
++my $verbose = 0;
+ 
+ my $arm_cond_codes = "eq|ne|cs|cc|mi|pl|vs|vc|hi|ls|ge|lt|gt|le|al|hs|lo";
+ 
+@@ -34,7 +36,7 @@ my $usage_str = "
+ $0\n
+ Gas-preprocessor.pl converts assembler files using modern GNU as syntax for
+ Apple's ancient gas version or clang's incompatible integrated assembler. The
+-conversion is regularly tested for Libav, x264 and vlc. Other projects might
++conversion is regularly tested for FFmpeg, Libav, x264 and vlc. Other projects might
+ use different features which are not correctly handled.
+ 
+ Options for this program needs to be separated with ' -- ' from the assembler
+@@ -48,6 +50,7 @@ command. Following options are currently supported:
+     -force-thumb  - assemble as thumb regardless of the input source
+                     (note, this is incomplete and only works for sources
+                     it explicitly was tested with)
++    -verbose      - print executed commands
+ ";
+ 
+ sub usage() {
+@@ -61,12 +64,14 @@ while (@ARGV) {
+         $fix_unreq = $1 ne "no-";
+     } elsif ($opt eq "-force-thumb") {
+         $force_thumb = 1;
++    } elsif ($opt eq "-verbose") {
++        $verbose = 1;
+     } elsif ($opt eq "-arch") {
+         $arch = shift;
+         die "unknown arch: '$arch'\n" if not exists $canonical_arch{$arch};
+     } elsif ($opt eq "-as-type") {
+         $as_type = shift;
+-        die "unknown as type: '$as_type'\n" if $as_type !~ /^((apple-)?(gas|clang)|armasm)$/;
++        die "unknown as type: '$as_type'\n" if $as_type !~ /^((apple-)?(gas|clang|llvm_gcc)|armasm)$/;
+     } elsif ($opt eq "-help") {
+         usage();
+         exit 0;
+@@ -90,6 +95,7 @@ if (grep /\.c$/, @gcc_cmd) {
+     # pass -v/--version along, used during probing. Matching '-v' might have
+     # uninteded results but it doesn't matter much if gas-preprocessor or
+     # the compiler fails.
++    print STDERR join(" ", @gcc_cmd)."\n" if $verbose;
+     exec(@gcc_cmd);
+ } else {
+     die "Unrecognized input filetype";
+@@ -97,14 +103,7 @@ if (grep /\.c$/, @gcc_cmd) {
+ if ($as_type eq "armasm") {
+ 
+     $preprocess_c_cmd[0] = "cpp";
+-    push(@preprocess_c_cmd, "-undef");
+-    # Normally a preprocessor for windows would predefine _WIN32,
+-    # but we're using any generic system-agnostic preprocessor "cpp"
+-    # with -undef (to avoid getting predefined variables from the host
+-    # system in cross compilation cases), so manually define it here.
+-    push(@preprocess_c_cmd, "-D_WIN32");
+-
+-    @preprocess_c_cmd = grep ! /^-nologo$/, @preprocess_c_cmd;
++
+     # Remove -ignore XX parameter pairs from preprocess_c_cmd
+     my $index = 1;
+     while ($index < $#preprocess_c_cmd) {
+@@ -115,9 +114,23 @@ if ($as_type eq "armasm") {
+         $index++;
+     }
+     if (grep /^-MM$/, @preprocess_c_cmd) {
++        push(@preprocess_c_cmd, "-D_WIN32");
++        # Normally a preprocessor for windows would predefine _WIN32,
++        # but we're using any generic system-agnostic preprocessor "cpp"
++        # with -undef (to avoid getting predefined variables from the host
++        # system in cross compilation cases), so manually define it here.
++        # We only use this generic preprocessor for generating dependencies,
++        # if the build system runs preprocessing with -M/-MM without -MF.
++        push(@preprocess_c_cmd, "-undef");
++        @preprocess_c_cmd = grep ! /^-nologo$/, @preprocess_c_cmd;
++        print STDERR join(" ", @preprocess_c_cmd)."\n" if $verbose;
+         system(@preprocess_c_cmd) == 0 or die "Error running preprocessor";
+         exit 0;
+     }
++
++    # If not preprocessing for getting a dependency list, use cl.exe
++    # instead.
++    $preprocess_c_cmd[0] = "cl.exe";
+ }
+ 
+ # if compiling, avoid creating an output file named '-.o'
+@@ -132,22 +145,26 @@ if ((grep /^-c$/, @gcc_cmd) && !(grep /^-o/, @gcc_cmd)) {
+         }
+     }
+ }
+-# replace only the '-o' argument with '-', avoids rewriting the make dependency
+-# target specified with -MT to '-'
++# Remove the -o argument; if omitted, we by default preprocess to stdout.
+ my $index = 1;
+ while ($index < $#preprocess_c_cmd) {
+     if ($preprocess_c_cmd[$index] eq "-o") {
+-        $index++;
+-        $preprocess_c_cmd[$index] = "-";
++        splice(@preprocess_c_cmd, $index, 2);
++        last;
+     }
+     $index++;
+ }
+ 
++@preprocess_c_cmd = grep ! /^-c$/, @preprocess_c_cmd;
++
+ my $tempfile;
+ if ($as_type ne "armasm") {
+     @gcc_cmd = map { /\.[csS]$/ ? qw(-x assembler -) : $_ } @gcc_cmd;
++
++    # Filter out options that can cause warnings due to unused arguments,
++    # Clang warns about unused -D parameters when invoked with "-x assembler".
++    @gcc_cmd = grep ! /^-D/, @gcc_cmd;
+ } else {
+-    @preprocess_c_cmd = grep ! /^-c$/, @preprocess_c_cmd;
+     @preprocess_c_cmd = grep ! /^-m/, @preprocess_c_cmd;
+ 
+     @preprocess_c_cmd = grep ! /^-G/, @preprocess_c_cmd;
+@@ -156,6 +173,10 @@ if ($as_type ne "armasm") {
+     @preprocess_c_cmd = grep ! /^-fp/, @preprocess_c_cmd;
+     @preprocess_c_cmd = grep ! /^-EHsc$/, @preprocess_c_cmd;
+     @preprocess_c_cmd = grep ! /^-O/, @preprocess_c_cmd;
++    @preprocess_c_cmd = grep ! /^-oldit/, @preprocess_c_cmd;
++    @preprocess_c_cmd = grep ! /^-FS/, @preprocess_c_cmd;
++    @preprocess_c_cmd = grep ! /^-w/, @preprocess_c_cmd;
++    @preprocess_c_cmd = grep ! /^-M/, @preprocess_c_cmd;
+ 
+     @gcc_cmd = grep ! /^-G/, @gcc_cmd;
+     @gcc_cmd = grep ! /^-W/, @gcc_cmd;
+@@ -163,6 +184,8 @@ if ($as_type ne "armasm") {
+     @gcc_cmd = grep ! /^-fp/, @gcc_cmd;
+     @gcc_cmd = grep ! /^-EHsc$/, @gcc_cmd;
+     @gcc_cmd = grep ! /^-O/, @gcc_cmd;
++    @gcc_cmd = grep ! /^-FS/, @gcc_cmd;
++    @gcc_cmd = grep ! /^-w/, @gcc_cmd;
+ 
+     my @outfiles = grep /\.(o|obj)$/, @gcc_cmd;
+     $tempfile = $outfiles[0].".asm";
+@@ -195,6 +218,8 @@ if (!$arch) {
+ 
+ # assume we're not cross-compiling if no -arch or the binary doesn't have the arch name
+ $arch = qx/arch/ if (!$arch);
++# remove any whitespace, e.g. arch command might print a newline
++$arch =~ s/\s+//g;
+ 
+ die "Unknown target architecture '$arch'" if not exists $canonical_arch{$arch};
+ 
+@@ -206,12 +231,14 @@ $comm = ";" if $as_type =~ /armasm/;
+ my %ppc_spr = (ctr    => 9,
+                vrsave => 256);
+ 
++print STDERR join(" ", @preprocess_c_cmd)."\n" if $verbose;
+ open(INPUT, "-|", @preprocess_c_cmd) || die "Error running preprocessor";
+ 
+ if ($ENV{GASPP_DEBUG}) {
+     open(ASMFILE, ">&STDOUT");
+ } else {
+     if ($as_type ne "armasm") {
++        print STDERR join(" ", @gcc_cmd)."\n" if $verbose;
+         open(ASMFILE, "|-", @gcc_cmd) or die "Error running assembler";
+     } else {
+         open(ASMFILE, ">", $tempfile);
+@@ -265,6 +292,9 @@ my %aarch64_req_alias;
+ if ($force_thumb) {
+     parse_line(".thumb\n");
+ }
++if ($as_type eq "armasm") {
++    parse_line(".text\n");
++}
+ 
+ # pass 1: parse .macro
+ # note that the handling of arguments is probably overly permissive vs. gas
+@@ -281,12 +311,11 @@ while (<INPUT>) {
+     s/\r$//;
+ 
+     foreach my $subline (split(";", $_)) {
+-        # Add newlines at the end of lines that don't already have one
+         chomp $subline;
+-        $subline .= "\n";
+-        parse_line($subline);
++        parse_line_continued($subline);
+     }
+ }
++parse_line_continued("");
+ 
+ sub eval_expr {
+     my $expr = $_[0];
+@@ -310,7 +339,7 @@ sub handle_if {
+             $expr =~ s/\s//g;
+             $result ^= $expr eq "";
+         } elsif ($type eq "c") {
+-            if ($expr =~ /(.*)\s*,\s*(.*)/) {
++            if ($expr =~ /(\S*)\s*,\s*(\S*)/) {
+                 $result ^= $1 eq $2;
+             } else {
+                 die "argument to .ifc not recognized";
+@@ -323,7 +352,7 @@ sub handle_if {
+             $result = eval_expr($expr) < 0;
+         } else {
+             chomp($line);
+-            die "unhandled .if varient. \"$line\"";
++            die "unhandled .if variant. \"$line\"";
+         }
+         push (@ifstack, $result);
+         return 1;
+@@ -369,18 +398,32 @@ sub parse_if_line {
+     return 0;
+ }
+ 
++my $last_line = "";
++sub parse_line_continued {
++    my $line = $_[0];
++    $last_line .= $line;
++    if ($last_line =~ /\\$/) {
++        $last_line =~ s/\\$//;
++    } else {
++        # Add newlines at the end of lines after concatenation.
++        $last_line .= "\n";
++        parse_line($last_line);
++        $last_line = "";
++    }
++}
++
+ sub parse_line {
+     my $line = $_[0];
+ 
+     return if (parse_if_line($line));
+ 
+     if (scalar(@rept_lines) == 0) {
+-        if (/\.macro/) {
++        if ($line =~ /\.macro/) {
+             $macro_level++;
+             if ($macro_level > 1 && !$current_macro) {
+                 die "nested macros but we don't have master macro";
+             }
+-        } elsif (/\.endm/) {
++        } elsif ($line =~ /\.endm/) {
+             $macro_level--;
+             if ($macro_level < 0) {
+                 die "unmatched .endm";
+@@ -701,7 +744,10 @@ sub handle_serialized_line {
+     }
+ 
+     # mach-o local symbol names start with L (no dot)
+-    $line =~ s/(?<!\w)\.(L\w+)/$1/g;
++    # armasm also can't handle labels that start with a dot.
++    if ($as_type =~ /apple-/ or $as_type eq "armasm") {
++        $line =~ s/(?<!\w)\.(L\w+)/$1/g;
++    }
+ 
+     # recycle the '.func' directive for '.thumb_func'
+     if ($thumb and $as_type =~ /^apple-/) {
+@@ -767,7 +813,7 @@ sub handle_serialized_line {
+         # This line seems to possibly have a neon instruction
+         foreach (keys %neon_alias_reg) {
+             my $alias = $_;
+-            # Require the register alias to match as an invididual word, not as a substring
++            # Require the register alias to match as an individual word, not as a substring
+             # of a larger word-token.
+             if ($line =~ /\b$alias\b/) {
+                 $line =~ s/\b$alias\b/$neon_alias_reg{$alias}/g;
+@@ -860,7 +906,7 @@ sub handle_serialized_line {
+             my $name = "temp_label_$temp_label_next";
+             $temp_label_next++;
+             # The matching regexp above removes the label from the start of
+-            # the line (which might contain an instruction as well), readd
++            # the line (which might contain an instruction as well), re-add
+             # it on a separate line above it.
+             $line = "$name:\n" . $line;
+             $last_temp_labels{$num} = $name;
+@@ -879,7 +925,7 @@ sub handle_serialized_line {
+ 
+ 
+         # Check branch instructions
+-        if ($line =~ /(?:^|\n)\s*(\w+\s*:\s*)?(bl?x?\.?(..)?(\.w)?)\s+(\w+)/) {
++        if ($line =~ /(?:^|\n)\s*(\w+\s*:\s*)?(bl?x?\.?([^\s]{2})?(\.w)?)\s+(\w+)/) {
+             my $instr = $2;
+             my $cond = $3;
+             my $width = $4;
+@@ -895,7 +941,7 @@ sub handle_serialized_line {
+                      ($arch eq "aarch64" and !is_aarch64_register($target))) {
+                 $call_targets{$target}++;
+             }
+-        } elsif ($line =~ /(?:^|\n)\s*(\w+\s*:\s*)?(cbn?z|adr|tbz)\s+(\w+)\s*,(\s*#\d+\s*,)?\s*(\w+)/) {
++        } elsif ($line =~ /(?:^|\n)\s*(\w+\s*:\s*)?(cbn?z|adr|tbn?z)\s+(\w+)\s*,(\s*#\d+\s*,)?\s*(\w+)/) {
+             my $instr = $2;
+             my $reg = $3;
+             my $bit = $4;
+@@ -908,12 +954,12 @@ sub handle_serialized_line {
+             }
+             # Convert tbz with a wX register into an xX register,
+             # due to armasm64 bugs/limitations.
+-            if ($instr eq "tbz" and $reg =~ /w\d+/) {
++            if (($instr eq "tbz" or $instr eq "tbnz") and $reg =~ /w\d+/) {
+                 my $xreg = $reg;
+                 $xreg =~ s/w/x/;
+                 $line =~ s/\b$reg\b/$xreg/;
+             }
+-        } elsif ($line =~ /^\s*.h?word.*\b\d+[bf]\b/) {
++        } elsif ($line =~ /^\s*.([hxd]?word|quad).*\b\d+[bf]\b/) {
+             while ($line =~ /\b(\d+)([bf])\b/g) {
+                 $line = handle_local_label($line, $1, $2);
+             }
+@@ -922,7 +968,7 @@ sub handle_serialized_line {
+         # ALIGN in armasm syntax is the actual number of bytes
+         if ($line =~ /\.(?:p2)?align\s+(\d+)/) {
+             my $align = 1 << $1;
+-            $line =~ s/\.(?:p2)?align\s(\d+)/ALIGN $align/;
++            $line =~ s/\.(?:p2)?align\s+(\d+)/ALIGN $align/;
+         }
+         # Convert gas style [r0, :128] into armasm [r0@128] alignment specification
+         $line =~ s/\[([^\[,]+),?\s*:(\d+)\]/[$1\@$2]/g;
+@@ -973,8 +1019,8 @@ sub handle_serialized_line {
+                 my $reg = $1;
+                 my $sym = $2;
+                 my $offset = eval_expr($3);
+-                if ($offset < 0) {
+-                    # armasm64 is buggy with ldr x0, =sym+offset where the
++                if ($offset < 0 and $ENV{GASPP_ARMASM64_SKIP_NEG_OFFSET}) {
++                    # armasm64 in VS < 15.6 is buggy with ldr x0, =sym+offset where the
+                     # offset is a negative value; it does write a negative
+                     # offset into the literal pool as it should, but the
+                     # negative offset only covers the lower 32 bit of the 64
+@@ -1005,7 +1051,7 @@ sub handle_serialized_line {
+ 
+             # Convert e.g. "add x0, x0, w0, uxtw" into "add x0, x0, w0, uxtw #0",
+             # or "ldr x0, [x0, w0, uxtw]" into "ldr x0, [x0, w0, uxtw #0]".
+-            $line =~ s/(uxtw|sxtw)(\s*\]?\s*)$/\1 #0\2/i;
++            $line =~ s/(uxt[whb]|sxt[whb])(\s*\]?\s*)$/\1 #0\2/i;
+ 
+             # Convert "mov x0, v0.d[0]" into "umov x0, v0.d[0]"
+             $line =~ s/\bmov\s+[xw]\d+\s*,\s*v\d+\.[ds]/u$&/i;
+@@ -1020,10 +1066,13 @@ sub handle_serialized_line {
+             # Convert "cset w0, lo" into "csetlo w0"
+             $line =~ s/(cset)\s+([xw]\w+)\s*,\s*($arm_cond_codes)/\1\3 \2/;
+ 
+-            # Strip out prfum; armasm64 fails to assemble any
+-            # variant/combination of prfum tested so far, but it can be
+-            # left out without any
+-            $line =~ s/prfum.*\]//;
++            if ($ENV{GASPP_ARMASM64_SKIP_PRFUM}) {
++                # Strip out prfum; armasm64 (VS < 15.5) fails to assemble any
++                # variant/combination of prfum tested so far, but since it is
++                # a prefetch instruction it can be skipped without changing
++                # results.
++                $line =~ s/prfum.*\]//;
++            }
+ 
+             # Convert "ldrb w0, [x0, #-1]" into "ldurb w0, [x0, #-1]".
+             # Don't do this for forms with writeback though.
+@@ -1041,7 +1090,7 @@ sub handle_serialized_line {
+             if ($ENV{GASPP_ARMASM64_INVERT_SCALE}) {
+                 # Instructions like fcvtzs and scvtf store the scale value
+                 # inverted in the opcode (stored as 64 - scale), but armasm64
+-                # in early versions stores it as-is. Thus convert from
++                # in VS < 15.5 stores it as-is. Thus convert from
+                 # "fcvtzs w0, s0, #8" into "fcvtzs w0, s0, #56".
+                 if ($line =~ /(?:fcvtzs|scvtf)\s+(\w+)\s*,\s*(\w+)\s*,\s*#(\d+)/) {
+                     my $scale = $3;
+@@ -1049,6 +1098,24 @@ sub handle_serialized_line {
+                     $line =~ s/#$scale/#$inverted_scale/;
+                 }
+             }
++
++            # Convert "ld1 {v0.4h-v3.4h}" into "ld1 {v0.4h,v1.4h,v2.4h,v3.4h}"
++            if ($line =~ /(\{\s*v(\d+)\.(\d+[bhsdBHSD])\s*-\s*v(\d+)\.(\d+[bhsdBHSD])\s*\})/) {
++                my $regspec = $1;
++                my $reg1 = $2;
++                my $layout1 = $3;
++                my $reg2 = $4;
++                my $layout2 = $5;
++                if ($layout1 eq $layout2) {
++                    my $new_regspec = "{";
++                    foreach my $i ($reg1 .. $reg2) {
++                        $new_regspec .= "," if ($i > $reg1);
++                        $new_regspec .= "v$i.$layout1";
++                    }
++                    $new_regspec .= "}";
++                    $line =~ s/$regspec/$new_regspec/;
++                }
++            }
+         }
+         # armasm is unable to parse &0x - add spacing
+         $line =~ s/&0x/& 0x/g;
+@@ -1103,6 +1170,8 @@ sub handle_serialized_line {
+     $line =~ s/\.syntax/$comm$&/x      if $as_type =~ /armasm/;
+ 
+     $line =~ s/\.hword/.short/x;
++    $line =~ s/\.xword/.quad/x;
++    $line =~ s/\.dword/.quad/x;
+ 
+     if ($as_type =~ /^apple-/) {
+         # the syntax for these is a little different
+@@ -1117,6 +1186,7 @@ sub handle_serialized_line {
+     }
+     if ($as_type eq "armasm") {
+         $line =~ s/\.global/EXPORT/x;
++        $line =~ s/\.extern/IMPORT/x;
+         $line =~ s/\.int/dcd/x;
+         $line =~ s/\.long/dcd/x;
+         $line =~ s/\.float/dcfs/x;
+@@ -1130,13 +1200,17 @@ sub handle_serialized_line {
+         $line =~ s/\.arm/ARM/x;
+         # The alignment in AREA is the power of two, just as .align in gas
+         $line =~ s/\.text/AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN/;
+-        $line =~ s/(\s*)(.*)\.rodata/$1AREA |.rodata|, DATA, READONLY, ALIGN=5/;
++        $line =~ s/(\s*)(.*)\.ro?data(\s*,\s*"\w+")?/$1AREA |.rdata|, DATA, READONLY, ALIGN=5/;
+         $line =~ s/\.data/AREA |.data|, DATA, ALIGN=5/;
+     }
+     if ($as_type eq "armasm" and $arch eq "arm") {
+         $line =~ s/fmxr/vmsr/;
+         $line =~ s/fmrx/vmrs/;
+         $line =~ s/fadds/vadd.f32/;
++        # Armasm in VS 2019 16.3 errors out on "it" instructions. But
++        # armasm implicitly adds the necessary it instructions anyway, so we
++        # can just filter them out.
++        $line =~ s/^\s*it[te]*\s+/$comm$&/;
+     }
+     if ($as_type eq "armasm" and $arch eq "aarch64") {
+         # Convert "b.eq" into "beq"
+@@ -1170,6 +1244,7 @@ if ($as_type ne "armasm") {
+ close(INPUT) or exit 1;
+ close(ASMFILE) or exit 1;
+ if ($as_type eq "armasm" and ! defined $ENV{GASPP_DEBUG}) {
++    print STDERR join(" ", @gcc_cmd)."\n" if $verbose;
+     system(@gcc_cmd) == 0 or die "Error running assembler";
+ }
+ 
+diff --git a/tools/msvsdepend.sh b/tools/msvsdepend.sh
+index 5d267ab7..d3a2db21 100755
+--- a/tools/msvsdepend.sh
++++ b/tools/msvsdepend.sh
+@@ -8,11 +8,22 @@ set -f
+ [ -n "$1" ] && [ -n "$3" ] && [ -n "$4" ] || exit 1
+ 
+ # Add flags to only perform syntax checking and output a list of included files
++# For sources that aren't C, run preprocessing to NUL instead.
++
++case "$3" in
++*.c)
++    opts="-W0 -Zs"
++    ;;
++*)
++    opts="-P -FiNUL"
++    ;;
++esac
++
+ # Discard all output other than included files
+ # Convert '\' directory separators to '/'
+ # Remove system includes (hack: check for "/Program Files" string in path)
+ # Add the source file itself as a dependency
+-deps="$($1 $2 -nologo -showIncludes -W0 -Zs "$3" 2>&1 |
++deps="$($1 $2 -nologo -showIncludes $opts "$3" 2>&1 |
+         grep '^Note: including file:' |
+         sed 's/^Note: including file:[[:space:]]*\(.*\)$/\1/; s/\\/\//g' |
+         sed '/\/[Pp]rogram [Ff]iles/d')
+diff --git a/x264.c b/x264.c
+index f18f6941..8081f502 100644
+--- a/x264.c
++++ b/x264.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * x264: top-level x264cli functions
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Loren Merritt <lorenm@u.washington.edu>
+  *          Laurent Aimar <fenrir@via.ecp.fr>
+@@ -32,6 +32,11 @@
+ /* The following two defines must be located before the inclusion of any system header files. */
+ #define WINVER       0x0500
+ #define _WIN32_WINNT 0x0500
++#endif
++
++#include "x264cli.h"
++
++#ifdef _WIN32
+ #include <windows.h>
+ #include <io.h>       /* _setmode() */
+ #include <fcntl.h>    /* _O_BINARY */
+@@ -40,7 +45,6 @@
+ #include <signal.h>
+ #include <getopt.h>
+ #include <time.h>
+-#include "x264cli.h"
+ #include "audio/encoders.h"
+ #include "input/input.h"
+ #include "output/output.h"
+diff --git a/x264.h b/x264.h
+index 5859521d..aeb507f2 100644
+--- a/x264.h
++++ b/x264.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * x264.h: x264 public header
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+@@ -45,7 +45,7 @@ extern "C" {
+ 
+ #include "x264_config.h"
+ 
+-#define X264_BUILD 164
++#define X264_BUILD 165
+ 
+ #ifdef _WIN32
+ #   define X264_DLL_IMPORT __declspec(dllimport)
+@@ -179,6 +179,11 @@ typedef struct x264_nal_t
+ #define X264_CPU_ARMV8           0x0000008U
+ #define X264_CPU_SVE             0x0000010U  /* AArch64 SVE */
+ #define X264_CPU_SVE2            0x0000020U  /* AArch64 SVE2 */
++#define X264_CPU_DOTPROD         0x0000040U  /* AArch64 DotProd */
++#define X264_CPU_I8MM            0x0000080U  /* AArch64 I8MM */
++
++/* RISCV64 */
++#define X264_CPU_RVV             0x0000001U  /* RISCV64 RVV */
+ 
+ /* MIPS */
+ #define X264_CPU_MSA             0x0000001U  /* MIPS MSA */
+diff --git a/x264cli.h b/x264cli.h
+index e7820059..562eca7e 100644
+--- a/x264cli.h
++++ b/x264cli.h
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * x264cli.h: x264cli common
+  *****************************************************************************
+- * Copyright (C) 2003-2024 x264 project
++ * Copyright (C) 2003-2025 x264 project
+  *
+  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
+  *          Loren Merritt <lorenm@u.washington.edu>
+diff --git a/x264dll.c b/x264dll.c
+index 8e150308..9438ba9b 100644
+--- a/x264dll.c
++++ b/x264dll.c
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * x264dll: x264 DLLMain for win32
+  *****************************************************************************
+- * Copyright (C) 2009-2024 x264 project
++ * Copyright (C) 2009-2025 x264 project
+  *
+  * Authors: Anton Mitrofanov <BugMaster@narod.ru>
+  *
+diff --git a/x264res.rc b/x264res.rc
+index 10a99427..5da0c18c 100644
+--- a/x264res.rc
++++ b/x264res.rc
+@@ -1,7 +1,7 @@
+ /*****************************************************************************
+  * x264res.rc: windows resource file
+  *****************************************************************************
+- * Copyright (C) 2012-2024 x264 project
++ * Copyright (C) 2012-2025 x264 project
+  *
+  * Authors: Henrik Gramner <henrik@gramner.com>
+  *
+@@ -68,7 +68,7 @@ BEGIN
+ #endif
+             VALUE "FileVersion",      X264_POINTVER
+             VALUE "InternalName",     "x264"
+-            VALUE "LegalCopyright",   "Copyright (C) 2003-2024 x264 project"
++            VALUE "LegalCopyright",   "Copyright (C) 2003-2025 x264 project"
+ #ifdef DLL
+             VALUE "OriginalFilename", "libx264-" xstr(X264_BUILD) ".dll"
+ #else
