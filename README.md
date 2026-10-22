@@ -3,10 +3,6 @@ Building the OBE environment from pinned upstream releases and the OBE forks.
 The open-source library snapshot is dated 2026-10-21. Sources and artifacts
 are kept in this checkout, with installed libraries under `target-root`.
 
-The [feature checklist](ROADMAP.md), [measurement plan](tasks/plan.md), and [implementation backlog](tasks/todo.md)
-prioritize encoding quality, the PAL-to-1080i transition, and URL-based network
-input for testing without SDI (in Italian).
-
 The [LTN upstream audit](docs/upstream-ltn-2026-10-21.md) records the library
 rebase, selected encoder fixes, validation and deferred upstream changes.
 
@@ -16,8 +12,7 @@ a live synthetic source, CLI configuration and integration tests. The
 automatic recovery after sender restarts. Local tests passed; no SRT WAN test
 has succeeded yet, with listener reachability through the NAT/gateway unresolved.
 The [1080i validation](docs/1080i-validation.md) checks decoded TFF/BFF fields,
-chroma and A/V sync. The [contribution report](docs/contribution-link.md)
-records the real SSH/TCP measurements and the remaining UDP reachability issue.
+chroma and A/V sync.
 
 The [web panel](docs/webpanel.md) provides a local Italian control console:
 saved profiles, input probe, start/stop, process metrics and encoder events.

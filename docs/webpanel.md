@@ -2,7 +2,7 @@
 
 Console scura in italiano per configurare e controllare **un encoder locale**.
 Usa la build URL/SRT già compilata e aggiunge un servizio Python senza nuove
-dipendenze. Non modifica il server Uno4, i router o un encoder avviato altrove.
+dipendenze. Non modifica il server remoto, i router o un encoder avviato altrove.
 
 ## Avvio isolato
 
@@ -23,11 +23,11 @@ docker stop --timeout 15 obe-webpanel
 Il servizio arresta anche il proprio encoder. Il profilo salvato rimane in
 `webpanel/.state/`, ignorata da Git. Riavviare il servizio non avvia l'encoding.
 
-Per usare il browser del proprio PC verso mini-server, aprire un tunnel SSH
+Per usare il browser del proprio PC verso il server encoder, aprire un tunnel SSH
 con l'alias già configurato:
 
 ```sh
-ssh -N -L 18088:127.0.0.1:18088 mini-server
+ssh -N -L 18088:127.0.0.1:18088 encoder-server
 ```
 
 Poi visitare lo stesso URL locale. L'accesso si basa sulla macchina locale o
@@ -165,7 +165,7 @@ Questi tempi sono osservazioni di laboratorio, non una garanzia sotto carico.
 La revisione del recupero è isolata nel branch `feat/webpanel-recovery` e nel
 container `obe-webpanel-recovery`, accessibile localmente su porta **18090**.
 Usa gli artefatti compilati esistenti in sola lettura e un proprio profilo.
-Per accedervi dal PC: `ssh -N -L 18090:127.0.0.1:18090 mini-server`, poi aprire
+Per accedervi dal PC: `ssh -N -L 18090:127.0.0.1:18090 encoder-server`, poi aprire
 `http://127.0.0.1:18090`. Il collaudo di 24 ore e il riaggancio dei ricevitori
 reali restano da completare.
 
