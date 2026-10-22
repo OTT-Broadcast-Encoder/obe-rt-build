@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NDI program receiver -> timestamped Matroska -> FFmpeg MPEG-TS on stdout.
+"""NDI program receiver -> timestamped Matroska -> MPEG-TS on stdout or SRT.
 
 Only Python stdlib, an installed NDI runtime and FFmpeg are required.
 Diagnostics go to stderr; stdout is reserved for the contribution stream.
@@ -10,6 +10,8 @@ from collections import deque
 import ctypes as C
 from fractions import Fraction
 import json
+import logging
+from logging.handlers import RotatingFileHandler
 import math
 import os
 from pathlib import Path
@@ -20,6 +22,8 @@ import subprocess
 import sys
 import threading
 import time
+
+LOGGER = logging.getLogger('ndi-gateway')
 
 
 def size_vint(value):
@@ -106,7 +110,14 @@ class BoundedPackets:
         return packet
 
 
-def ffmpeg_command(executable, video, field_order, max_mbps=15, threads=2):
+def ffmpeg_command(executable, video, field_order, max_mbps=15, threads=2, *,
+                   srt_port=None, srt_passphrase=None, srt_latency_ms=200):
+    if srt_port is not None:
+        if not 1 <= srt_port <= 65535 or not 20 <= srt_latency_ms <= 8000:
+            raise ValueError('Invalid SRT port or latency')
+        if not srt_passphrase or not 10 <= len(srt_passphrase) <= 79 or any(
+                c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in srt_passphrase):
+            raise ValueError('SRT requires a 10-79 character URL-safe passphrase')
     width, height, rate_n, rate_d, aspect, interlaced = video
     sar = (Fraction(aspect).limit_denominator(1000) * height / width).limit_denominator(1000)
     vf = f'format=yuv422p,setsar={sar.numerator}/{sar.denominator}'
@@ -129,9 +140,22 @@ def ffmpeg_command(executable, video, field_order, max_mbps=15, threads=2):
     command += ['-colorspace', matrix, '-color_primaries', matrix, '-color_trc', 'bt709',
         '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', '-ac', '2',
         '-af', 'aresample=48000:async=100:first_pts=0',
-        '-streamid', '0:256', '-streamid', '1:257', '-mpegts_service_id', '1',
-        '-mpegts_pmt_start_pid', '4096', '-mpegts_flags', '+resend_headers+initial_discontinuity',
-        '-muxdelay', '0', '-flush_packets', '1', '-f', 'mpegts', 'pipe:1']
+        '-streamid', '0:256', '-streamid', '1:257', '-muxdelay', '0', '-flush_packets', '1']
+    if srt_port is None:
+        command += ['-mpegts_service_id', '1', '-mpegts_pmt_start_pid', '4096',
+            '-mpegts_flags', '+resend_headers+initial_discontinuity', '-f', 'mpegts', 'pipe:1']
+    else:
+        # A bounded encoded-packet queue keeps capture live while no client is connected.
+        # The underlying muxer passes protocol options to SRT; keep the secret out of URLs.
+        options = ('mpegts_service_id=1:mpegts_pmt_start_pid=4096:'
+                   'mpegts_flags=+resend_headers+initial_discontinuity:flush_packets=1:'
+                   f'passphrase={srt_passphrase}')
+        command += ['-f', 'fifo', '-fifo_format', 'mpegts', '-format_opts', options,
+            '-queue_size', '60', '-drop_pkts_on_overflow', '1', '-restart_with_keyframe', '1',
+            '-attempt_recovery', '1', '-recover_any_error', '1', '-recovery_wait_time', '1',
+            f'srt://0.0.0.0:{srt_port}?mode=listener&transtype=live&pkt_size=1316'
+            f'&latency={srt_latency_ms*1000}&pbkeylen=32&enforced_encryption=1'
+            '&listen_timeout=2000000&timeout=3000000']
     return command
 
 
@@ -276,7 +300,11 @@ class NDI:
 
 
 def log(event, **details):
-    print(json.dumps({'event': event, **details}), file=sys.stderr, flush=True)
+    message = json.dumps({'event': event, **details})
+    if LOGGER.handlers:
+        LOGGER.info(message)
+    else:
+        print(message, file=sys.stderr, flush=True)
 
 
 def watch_control(stop, heartbeat):
@@ -304,6 +332,10 @@ def watch_control(stop, heartbeat):
     threading.Thread(target=reader, daemon=True).start()
 
 
+def stop_requested(path):
+    return bool(path and path.exists() and path.read_text(encoding='ascii').strip() == 'stop')
+
+
 def run(args):
     stop = threading.Event()
     heartbeat = [time.monotonic()]
@@ -312,11 +344,13 @@ def run(args):
     # Independent watchdog remains responsive even if FFmpeg's input pipe stalls.
     def watchdog():
         while not stop.wait(.2):
+            if stop_requested(args.stop_file):
+                stop.set()
             if args.heartbeat_timeout and time.monotonic() - heartbeat[0] > args.heartbeat_timeout:
                 log('heartbeat_timeout')
                 stop.set()
     threading.Thread(target=watchdog, daemon=True).start()
-    ndi, process, writer = None, None, None
+    ndi, process, writer, reader = None, None, None, None
     packets, errors = BoundedPackets(), []
     counts = {1: 0, 2: 0}
     try:
@@ -335,8 +369,17 @@ def run(args):
             return
         timeline = Timeline(min(frame[1] for frame in initial))
         process = subprocess.Popen(ffmpeg_command(args.ffmpeg, formats[1], args.field_order,
-            args.max_mbps, args.threads), stdin=subprocess.PIPE, stdout=sys.stdout.buffer,
+            args.max_mbps, args.threads, srt_port=args.srt_port,
+            srt_passphrase=args.srt_passphrase, srt_latency_ms=args.srt_latency_ms),
+            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL if args.srt_port else sys.stdout.buffer,
+            stderr=subprocess.PIPE if args.srt_port else None,
             creationflags=(subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS) if os.name == 'nt' else 0)
+        if args.srt_port:
+            def collect():
+                for line in process.stderr:
+                    log('ffmpeg', message=line.decode(errors='replace').strip().replace(args.srt_passphrase, '[redacted]'))
+            reader = threading.Thread(target=collect, daemon=True)
+            reader.start()
         def write_frames():
             try:
                 process.stdin.write(mkv_header(formats[1], formats[2], args.field_order))
@@ -393,6 +436,11 @@ def run(args):
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait(timeout=2)
+            if reader:
+                reader.join(timeout=2)
+                process.stderr.close()
+            if writer:
+                writer.join(timeout=2)
         if ndi:
             ndi.close()
         log('stopped', video_frames=counts[1], audio_blocks=counts[2])
@@ -408,22 +456,56 @@ def main():
     parser.add_argument('--threads', type=int, choices=range(1, 5), default=2)
     parser.add_argument('--seconds', type=float, default=0)
     parser.add_argument('--heartbeat-timeout', type=float, default=12)
+    parser.add_argument('--srt-port', type=int, help='Serve encrypted MPEG-TS directly on this UDP port')
+    parser.add_argument('--srt-passphrase-file', type=Path, help='Restricted file containing a URL-safe SRT key')
+    parser.add_argument('--srt-latency-ms', type=int, default=200)
+    parser.add_argument('--stop-file', type=Path, help='Exit when this file contains stop (for the Windows task)')
+    parser.add_argument('--log-file', type=Path, help='Rotate diagnostic logs (2 MiB, two backups)')
     args = parser.parse_args()
     if not math.isfinite(args.seconds) or args.seconds < 0 or not 0 <= args.heartbeat_timeout <= 60:
         parser.error('Invalid duration or heartbeat timeout')
     if sys.byteorder != 'little':
         parser.error('Only little-endian hosts are supported')
-    if os.name == 'nt':
+    args.srt_passphrase = None
+    if args.srt_port is not None:
+        if not args.srt_passphrase_file:
+            parser.error('--srt-passphrase-file is required for a public listener')
+        try:
+            args.srt_passphrase = args.srt_passphrase_file.read_text(encoding='ascii').strip()
+            ffmpeg_command(args.ffmpeg, (720, 576, 25, 1, 16/9, True), args.field_order,
+                srt_port=args.srt_port, srt_passphrase=args.srt_passphrase, srt_latency_ms=args.srt_latency_ms)
+        except (OSError, UnicodeError, ValueError):
+            parser.error('Invalid SRT port, latency or passphrase file (10-79 URL-safe characters required)')
+        args.heartbeat_timeout = 0  # Standalone listener: no SSH control pipe.
+    elif args.srt_passphrase_file:
+        parser.error('--srt-passphrase-file requires --srt-port')
+    if args.log_file:
+        LOGGER.setLevel(logging.INFO)
+        LOGGER.addHandler(RotatingFileHandler(args.log_file, maxBytes=2*1024*1024, backupCount=2, encoding='utf-8'))
+    if os.name == 'nt' and not args.srt_port:
         import msvcrt
         msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
         msvcrt.setmode(sys.stdin.fileno(), os.O_BINARY)
-    try:
-        run(args)
-    except KeyboardInterrupt:
-        pass
-    except Exception as error:
-        log('error', message=str(error))
-        return 1
+    while not stop_requested(args.stop_file):
+        try:
+            run(args)
+            break
+        except KeyboardInterrupt:
+            break
+        except Exception as error:
+            message = str(error)
+            if args.srt_passphrase:
+                message = message.replace(args.srt_passphrase, '[redacted]')
+            log('error', message=message)
+            if not args.srt_port or args.seconds:
+                return 1
+            if stop_requested(args.stop_file):
+                break
+            log('retry', seconds=2)
+            try:
+                time.sleep(2)
+            except KeyboardInterrupt:
+                break
     return 0
 
 

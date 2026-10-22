@@ -1,45 +1,65 @@
-# Gateway ONVServer → NDI → SSH → OBE
+# Gateway ONVServer → NDI → SRT → OBE
 
 Il gateway riceve `PLAYOUT (PO_Uno4)` dal runtime NDI già presente sul PC
-Windows e porta il programma nel container OBE attraverso SSH. Non cambia
-ONVServer, CaptureStreamer, SDI o le regole di rete. Usa Python stdlib e
-FFmpeg esistenti; il codice del mittente viene eseguito in memoria via SSH.
+Windows e offre il programma direttamente su una porta UDP tramite SRT
+cifrato. Usa Python stdlib, runtime NDI e FFmpeg già installati. ONVServer,
+CaptureStreamer e SDI mantengono la configurazione della messa in onda.
+SSH serve solo per amministrare il PC: il trasporto video e la durata del
+processo non dipendono da una sessione SSH.
 
 ```text
-Windows: ONVServer → NDI PAL → ricevitore separato → FFmpeg H.264/AAC → MPEG-TS
-                                                                        │ SSH
-mini-server:                         OBE ← UDP loopback ← relay container ←┘
+Windows: ONVServer → NDI PAL → gateway H.264/AAC → SRT listener UDP 20879
+                                                             │ router/NAT
+OBE:                                        ingresso URL SRT ←┘
 ```
 
 ## Avvio
 
-Con `obe-webpanel` già attivo, dalla radice del repository su mini-server:
+Sul PC Windows, da PowerShell amministratore dell'utente del playout,
+con `install-srt.ps1` e `ndi_sender.py` nella stessa directory:
 
-```sh
-python3 gateway/ssh_relay.py \
-  --host HOST_PLAYOUT --ssh-port 31222 --user UTENTE_SSH \
-  --source 'PLAYOUT (PO_Uno4)' --container obe-webpanel --ask-password
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-srt.ps1 -Action Install
 ```
 
-Sostituire host e utente con quelli del playout. La chiave host SSH deve già
-essere verificata: il relay usa `StrictHostKeyChecking=yes`. Omettere
-`--ask-password` per usare una chiave SSH o un agent. La modalità password
-richiede `sshpass` sul lato Linux, già disponibile nell'ambiente collaudato;
-la password passa tramite un descrittore anonimo e resta solo in memoria.
-Non inserirla nella riga di comando, nei profili o negli script.
+L'installazione copia il gateway in `C:\ProgramData\OBE-NDI-Gateway`, genera
+una chiave SRT casuale in `srt-passphrase.txt` con accesso riservato all'utente,
+SYSTEM e amministratori, crea una sola regola firewall Windows UDP 20879 per
+FFmpeg e avvia l'attività `OBE-NDI-SRT-Gateway`. Non installa dipendenze.
+La deroga alla execution policy vale solo per quel processo PowerShell.
+L'attività riparte al login dell'utente del playout; **richiede una sessione
+Windows di quell'utente**, non una connessione SSH. Non è un servizio pre-login.
 
-Nel webpanel impostare **`udp://127.0.0.1:12000`**, quindi verificare l'ingresso.
-È il loopback **del container**, non quello del PC Windows o del browser.
-Il profilo PAL è una base per il bitrate di uscita; il gateway non avvia OBE.
-Senza `--container`, il relay pubblica invece sul loopback del sistema locale.
-`--udp-port` cambia la porta. Un lock impedisce a due relay sullo stesso host
-di mescolare i flussi verso la stessa destinazione.
+Per controllo e arresto usare lo stesso script installato con
+`-Action Status`, `-Action Stop` o `-Action Start`. Stop scrive un marcatore
+locale e lascia al gateway la chiusura dei propri processi; non ferma il playout.
+Il log `gateway.log` ruota a 2 MiB con due copie. La chiave non compare nei log
+o nell'URL; è comunque accessibile agli amministratori locali, anche negli
+argomenti del processo FFmpeg.
 
-Ctrl+C arresta il relay e il suo mittente. `SIGTERM` ha lo stesso effetto.
-`--seconds 60` limita una prova a circa un minuto, più il tempo di chiusura.
-L'avvio non installa servizi o attività pianificate: dopo un riavvio dell'host
-il comando deve essere rilanciato. Non è necessario aprire nuove porte UDP
-pubbliche: tutta la contribuzione attraversa la connessione SSH esistente.
+Nel webpanel impostare, dopo l'inoltro sul router:
+**`srt://77.39.212.14:20879?mode=caller&latency=200000`**.
+Inserire la chiave nel campo SRT separato per probe e avvio. Per una macchina
+nella LAN del playout usare `192.168.144.35` al posto dell'IP pubblico.
+Su mini-server una copia riservata della chiave è in
+`webpanel/.state/ndi-srt-passphrase.txt` (permessi 0600, esclusa da Git).
+Il gateway serve **un client alla volta**; OBE può effettuare il probe,
+chiudere la connessione e riaprirla per l'encoding. Chiudere eventuali player
+di prova prima di avviare OBE. Il precedente URL UDP locale non è più il
+percorso operativo. Il gateway non avvia né riconfigura OBE.
+
+## Prompt per l'agent del router
+
+> Configura sul router del playout l'inoltro UDP 20879 sull'IP pubblico
+> 77.39.212.14 verso 192.168.144.35:20879 per il gateway video SRT. Verifica
+> che l'IP LAN del PC Windows resti stabile e aggiungi la sola regola firewall
+> necessaria. Mantieni le altre configurazioni, compreso SSH sulla porta
+> 31222. Non serve aprire TCP né abilitare DMZ o UPnP. Conferma la
+> configurazione applicata e verifica una sessione SRT cifrata dall'esterno
+> con il ricevitore autorizzato: un controllo TCP non verifica questa porta.
+
+Il NAT e la prova attraverso Internet devono essere completati dal router;
+l'ascolto locale da solo non certifica la raggiungibilità pubblica.
 
 ## Formato e sincronismo
 
@@ -66,22 +86,26 @@ altri layout video/audio o cambi di formato provocano un errore esplicito.
 
 ## Recupero e limiti
 
-Il relay riprova la connessione dopo 2, 4 e poi 5 secondi. Un controllo di
-presenza ogni due secondi ferma il mittente se per dieci secondi non arrivano
-messaggi dal relay. EOF, assenza di audio/video per tre secondi, timestamp
-invalidi o una coda piena chiudono la sessione; il relay la ricrea.
+Il muxer FIFO di FFmpeg mantiene al massimo 60 pacchetti codificati e scarta
+il backlog quando non c'è un client. SRT usa AES-256, latenza iniziale 200 ms,
+timeout di ascolto di 2 s e timeout I/O di 3 s; il muxer riapre il listener
+dopo 1 s e riprende da un keyframe. Il solo traffico media attraversa UDP.
+Durante l'attesa senza client, timeout di ascolto e scarti della FIFO nei log
+sono previsti: il gateway mantiene il programma corrente senza accumularlo.
+Assenza di audio/video per tre secondi, timestamp invalidi o una coda raw piena
+riavviano la cattura NDI dopo due secondi. La cattura non attende heartbeat SSH.
 La coda raw è limitata a 64 blocchi e 32 MiB, per assorbire brevi pause senza
 conservare il backlog indefinitamente.
 La chiusura interessa esclusivamente il ricevitore NDI e FFmpeg del gateway.
 
-Gli errori di autenticazione o verifica host fermano i tentativi, per evitare
-blocchi dell'account. Se il container sparisce, il relay attende che ritorni.
+Una chiave errata impedisce il collegamento; la cifratura è obbligatoria.
 PID MPEG-TS stabili e header ripetuti permettono a OBE di effettuare il suo
-probe, riaprire l'ingresso all'avvio e riconnettersi dopo una nuova sessione SSH.
+probe, riaprire l'ingresso all'avvio e riconnettersi dopo una nuova sessione SRT.
 Un cambio permanente di formato richiede comunque un nuovo probe in OBE.
 
-SSH usa TCP: protegge il contenuto ma può accumulare ritardo durante perdita
-o congestione. Il recupero non è senza perdita; non vengono generati nero e
+SRT ritrasmette i pacchetti persi entro il budget di latenza configurato;
+non può recuperare qualsiasi guasto di rete. Il recupero non è senza perdita;
+non vengono generati nero e
 silenzio per riempire l'interruzione del programma. Per esercizio continuativo
 restano da collaudare lunga durata, risorse, ritardo e qualità sul materiale reale.
 
@@ -120,3 +144,18 @@ di presenza e il recupero dopo il ritorno del container. Il probe finale
 dell'URL nel container conferma AVC PAL TFF 16:9 e AAC stereo 48 kHz con
 un secondo di analisi e 2 MB di probe. I risultati sono in
 `tests/.build/ndi-gateway/heartbeat-result.json` e `final-url-probe.json`.
+
+Questi risultati del 21 ottobre riguardano il trasporto SSH precedente.
+La suite aggiuntiva `tests/ndi-gateway-srt.py`, eseguibile con lo stesso
+ambiente Python/FFmpeg della suite locale, verifica il listener SRT reale:
+cifratura, rifiuto della chiave errata, attesa senza client, recupero fra due
+client e assenza della chiave nei log. L'implementazione SSH è conservata per
+compatibilità e regressione, ma non serve al funzionamento del listener SRT.
+
+Il 22 ottobre 2026 il collaudo sul PC Windows è passato: due connessioni SRT
+cifrate successive, chiave errata rifiutata, AVC 720×576i25 TFF 16:9 e AAC
+stereo 48 kHz, chiave assente dai log. Stop/Start dell'attività chiude e ricrea
+solo il proprio FFmpeg; ONVServer, CaptureStreamer e PlayOutNet restano attivi.
+Artefatto: `tests/.build/ndi-gateway-srt/windows-result.json`. La prova
+dall'esterno non ha stabilito la connessione: NAT pubblico ancora da verificare
+con l'agent del router (`public-result.json`).
