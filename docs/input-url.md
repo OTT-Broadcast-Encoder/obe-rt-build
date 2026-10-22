@@ -1,6 +1,6 @@
 # Ingresso video da URL
 
-Il modulo `lavf_input` riceve una sorgente di rete, decodifica video e audio tramite FFmpeg e li inoltra all'encoder e al mux MPEG-TS di OBE. Non richiede SDI né un file di ingresso. Questo primo incremento serve al banco di prova locale; il percorso Internet con SRT resta nella [roadmap](../tasks/plan.md).
+Il modulo `lavf_input` riceve una sorgente di rete, decodifica video e audio tramite FFmpeg e li inoltra all'encoder e al mux MPEG-TS di OBE. Non richiede SDI né un file di ingresso. Questo primo incremento serve al banco di prova locale; il percorso Internet con SRT resta da implementare e collaudare.
 
 ## Ambito attuale
 

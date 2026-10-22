@@ -27,3 +27,21 @@ vapoursynth/
 vs-plugins/vapoursynth-*
 vaapi/libdrm-*.tar.xz
 tests/.build/
+
+# Local planning, deployment notes and tool metadata.
+[Rr][Oo][Aa][Dd][Mm][Aa][Pp]*.md
+[Tt][Oo][Dd][Oo]*.md
+/tasks/
+/.impeccable/
+/docs/confronto-inaria.md
+/docs/contribution-link.md
+/docs/playout-windows.md
+/docs/ndi-gateway.md
+/gateway/install-srt.ps1
+
+# Local credentials and gateway logs.
+.env
+.env.*
+!.env.example
+srt-passphrase.txt
+gateway.log*
