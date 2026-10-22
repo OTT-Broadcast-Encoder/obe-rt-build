@@ -21,6 +21,23 @@ VIDEO = (64, 48, 25, 1, 16/9, True)
 
 
 class ListenerTests(unittest.TestCase):
+    def test_srt_uses_a_near_lossless_profile_without_changing_pipe_defaults(self):
+        key = secrets.token_hex(16)
+        srt = sender.ffmpeg_command('ffmpeg', (1920, 1080, 25, 1, 16/9, True), 'tff',
+                                    srt_port=20879, srt_passphrase=key)
+        pipe = sender.ffmpeg_command('ffmpeg', VIDEO, 'tff')
+        def value(command, option):
+            return command[command.index(option)+1]
+        self.assertEqual((value(srt, '-preset'), value(srt, '-crf'), value(srt, '-maxrate'),
+                          value(srt, '-threads'), value(srt, '-pix_fmt')),
+                         ('faster', '8', '200M', '4', 'yuv422p'))
+        self.assertEqual((value(pipe, '-preset'), value(pipe, '-crf'), value(pipe, '-maxrate')),
+                         ('veryfast', '16', '15M'))
+        self.assertEqual(value(srt, '-flags'), '+ilme+ildct')
+        self.assertIn('tff=1', value(srt, '-x264-params'))
+        self.assertNotIn('-minrate', srt)
+        self.assertNotIn('-b:v', srt)
+
     def test_public_listener_requires_a_valid_key(self):
         for key in (None, '', 'short', 'a'*80, 'unsafe:key&value', 'secret\nvalue'):
             with self.assertRaises(ValueError):

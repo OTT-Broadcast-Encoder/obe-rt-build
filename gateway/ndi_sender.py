@@ -110,8 +110,22 @@ class BoundedPackets:
         return packet
 
 
-def ffmpeg_command(executable, video, field_order, max_mbps=15, threads=2, *,
-                   srt_port=None, srt_passphrase=None, srt_latency_ms=200):
+def encoder_profile(srt_port, max_mbps=None, preset=None, crf=None, threads=None):
+    defaults = (200, 'faster', 8, 4) if srt_port is not None else (15, 'veryfast', 16, 2)
+    max_mbps = defaults[0] if max_mbps is None else max_mbps
+    preset = defaults[1] if preset is None else preset
+    crf = defaults[2] if crf is None else crf
+    threads = defaults[3] if threads is None else threads
+    if not 1 <= max_mbps <= 250 or preset not in ('veryfast', 'faster', 'fast', 'medium') \
+            or not 0 <= crf <= 51 or not 1 <= threads <= 8:
+        raise ValueError('Invalid encoder profile')
+    return max_mbps, preset, crf, threads
+
+
+def ffmpeg_command(executable, video, field_order, max_mbps=None, threads=None, *,
+                   srt_port=None, srt_passphrase=None, srt_latency_ms=200,
+                   preset=None, crf=None):
+    max_mbps, preset, crf, threads = encoder_profile(srt_port, max_mbps, preset, crf, threads)
     if srt_port is not None:
         if not 1 <= srt_port <= 65535 or not 20 <= srt_latency_ms <= 8000:
             raise ValueError('Invalid SRT port or latency')
@@ -127,8 +141,8 @@ def ffmpeg_command(executable, video, field_order, max_mbps=15, threads=2, *,
         '-threads', str(threads), '-filter_threads', '1', '-probesize', '2000000',
         '-analyzeduration', '500000', '-f', 'matroska', '-i', 'pipe:0',
         '-map', '0:v:0', '-map', '0:a:0', '-vf', vf,
-        '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency',
-        '-crf', '16', '-maxrate', f'{max_mbps}M', '-bufsize', f'{max_mbps}M',
+        '-c:v', 'libx264', '-preset', preset, '-tune', 'zerolatency',
+        '-crf', str(crf), '-maxrate', f'{max_mbps}M', '-bufsize', f'{max_mbps}M',
         '-threads', str(threads), '-g', str(max(1, round(rate_n / rate_d / 2))), '-bf', '0',
         '-pix_fmt', 'yuv422p', '-fps_mode', 'passthrough']
     x264 = 'repeat-headers=1'
@@ -370,7 +384,8 @@ def run(args):
         timeline = Timeline(min(frame[1] for frame in initial))
         process = subprocess.Popen(ffmpeg_command(args.ffmpeg, formats[1], args.field_order,
             args.max_mbps, args.threads, srt_port=args.srt_port,
-            srt_passphrase=args.srt_passphrase, srt_latency_ms=args.srt_latency_ms),
+            srt_passphrase=args.srt_passphrase, srt_latency_ms=args.srt_latency_ms,
+            preset=args.preset, crf=args.crf),
             stdin=subprocess.PIPE, stdout=subprocess.DEVNULL if args.srt_port else sys.stdout.buffer,
             stderr=subprocess.PIPE if args.srt_port else None,
             creationflags=(subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS) if os.name == 'nt' else 0)
@@ -396,7 +411,8 @@ def run(args):
         writer = threading.Thread(target=write_frames, daemon=True)
         writer.start()
         log('connected', source=args.source, video=formats[1], audio=formats[2], field_order=args.field_order,
-            ffmpeg_pid=process.pid, max_mbps=args.max_mbps)
+            ffmpeg_pid=process.pid, max_mbps=args.max_mbps, preset=args.preset, crf=args.crf,
+            threads=args.threads)
         start = time.monotonic()
         last = {1: start, 2: start}
         while not stop.is_set() and (not args.seconds or time.monotonic() - start < args.seconds):
@@ -452,8 +468,10 @@ def main():
     parser.add_argument('--ndi-runtime', default=r'C:\OndaMultimedia\x64\NDI\Processing.NDI.Lib.x64.dll')
     parser.add_argument('--ffmpeg', default=shutil.which('ffmpeg') or r'C:\ffmpeg\bin\ffmpeg.exe')
     parser.add_argument('--field-order', choices=('tff', 'bff'), default='tff')
-    parser.add_argument('--max-mbps', type=int, choices=range(1, 51), default=15, metavar='1..50')
-    parser.add_argument('--threads', type=int, choices=range(1, 5), default=2)
+    parser.add_argument('--max-mbps', type=int, choices=range(1, 251), metavar='1..250')
+    parser.add_argument('--preset', choices=('veryfast', 'faster', 'fast', 'medium'))
+    parser.add_argument('--crf', type=int, choices=range(52), metavar='0..51')
+    parser.add_argument('--threads', type=int, choices=range(1, 9))
     parser.add_argument('--seconds', type=float, default=0)
     parser.add_argument('--heartbeat-timeout', type=float, default=12)
     parser.add_argument('--srt-port', type=int, help='Serve encrypted MPEG-TS directly on this UDP port')
@@ -462,6 +480,8 @@ def main():
     parser.add_argument('--stop-file', type=Path, help='Exit when this file contains stop (for the Windows task)')
     parser.add_argument('--log-file', type=Path, help='Rotate diagnostic logs (2 MiB, two backups)')
     args = parser.parse_args()
+    args.max_mbps, args.preset, args.crf, args.threads = encoder_profile(
+        args.srt_port, args.max_mbps, args.preset, args.crf, args.threads)
     if not math.isfinite(args.seconds) or args.seconds < 0 or not 0 <= args.heartbeat_timeout <= 60:
         parser.error('Invalid duration or heartbeat timeout')
     if sys.byteorder != 'little':
@@ -473,7 +493,9 @@ def main():
         try:
             args.srt_passphrase = args.srt_passphrase_file.read_text(encoding='ascii').strip()
             ffmpeg_command(args.ffmpeg, (720, 576, 25, 1, 16/9, True), args.field_order,
-                srt_port=args.srt_port, srt_passphrase=args.srt_passphrase, srt_latency_ms=args.srt_latency_ms)
+                args.max_mbps, args.threads, srt_port=args.srt_port,
+                srt_passphrase=args.srt_passphrase, srt_latency_ms=args.srt_latency_ms,
+                preset=args.preset, crf=args.crf)
         except (OSError, UnicodeError, ValueError):
             parser.error('Invalid SRT port, latency or passphrase file (10-79 URL-safe characters required)')
         args.heartbeat_timeout = 0  # Standalone listener: no SSH control pipe.

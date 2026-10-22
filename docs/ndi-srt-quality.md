@@ -1,0 +1,7 @@
+# SRT di contribuzione: profilo quasi lossless
+
+Con `--srt-port`, il gateway usa H.264 4:2:2 a 8 bit, mantiene il 1080i25 TFF e applica `faster`, CRF 8, quattro thread e VBV massimo/buffer di 200 Mbit. L'audio resta AAC stereo 48 kHz a 256 kbit/s. Il trasporto MPEG-TS/SRT resta cifrato con latenza configurabile (200 ms per impostazione predefinita).
+
+CRF 8 mira a una perdita visiva molto bassa, ma non garantisce identità matematica con l'ingresso. I 200 Mbit/s sono un **tetto video**, non un bitrate minimo: la complessità delle immagini determina la banda effettiva. Non riempire artificialmente il flusso fino a 100 Mbit/s; aumenterebbe il traffico senza recuperare dettaglio. I valori possono essere sovrascritti con `--preset`, `--crf`, `--max-mbps` e `--threads` senza cambiare il profilo dei collegamenti SSH, che conserva i precedenti valori predefiniti.
+
+Su un Ryzen 5 3600, un campione sintetico 1920×1080i25 di 6 secondi è stato codificato a 1,65× il tempo reale con `faster` e 1,2× con `fast`, entrambi a CRF 8 e tetto 200 Mbit/s. Il campione ha prodotto circa 33 e 30 Mbit/s di MPEG-TS rispettivamente: non rappresenta la banda o il carico CPU del playout reale. Prima di considerare il profilo stabile, misurare sul segnale NDI effettivo velocità, frame persi, carico CPU, bitrate, jitter/perdite SRT, sincronismo e qualità visiva. Se il tempo reale non regge, ripristinare lo script precedente oppure ridurre il preset dopo una prova controllata.
