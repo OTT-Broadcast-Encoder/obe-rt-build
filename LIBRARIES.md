@@ -9,7 +9,7 @@ the exact checked-out commits; local compatibility patches are listed below.
 | --- | --- |
 | FFmpeg | n9.0.2 |
 | libSRT | v1.5.7 (`899348d8318eb9a3c5a5b6ec43c4a1114288773a`), Haivision upstream, OpenSSL encryption |
-| x264 | OBE `72de62b0fcc29241d735c21ea88d9376447c6dd6`, including official upstream `0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee` |
+| x264 | OBE `e40cb22ee121c5dcc35b55a619cf8515d45d3ff4`, including official upstream `0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee` |
 | x265 | 4.2, official multicoreware Bitbucket repository |
 | FDK-AAC | v3.0.0 |
 | TwoLAME | 0.4.0, upstream njh/twolame |
@@ -24,7 +24,7 @@ the exact checked-out commits; local compatibility patches are listed below.
 | libdrm | 2.4.134 |
 | libva / libva-utils | 2.24.1 / 2.24.0 |
 | intel-vaapi-driver | `fd727a4e9cb8b2878a1e93d4dddc8dd1c1a4e0ea`, archived i965 driver |
-| OBE | `8ecb290d29bc45fcc940eba28c5070d332fa03db`, integrated compatibility, URL/SRT, telemetry, preset and mid-GOP fixes |
+| OBE | `3effd5c94ba941c2c8a957dded65e63924a2bf48`, integrated compatibility, URL/SRT, telemetry, preset and mid-GOP fixes |
 
 NDI v4 and DeckLink 10.8.5/10.11.2 are retained. Proprietary SDK upgrades,
 hardware-driver upgrades, optional VapourSynth plugins, and deployment are
