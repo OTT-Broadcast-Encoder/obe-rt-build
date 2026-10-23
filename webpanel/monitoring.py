@@ -27,6 +27,21 @@ def utc_now():
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def system_sample(state, instance_id):
+    """Archive only numeric resource measurements and interface names."""
+    result = {"status": state.get("status"), "instance_id": instance_id}
+    if result["status"] != "live":
+        return result
+    fields = {"cpu": ("usage_percent", "load_1m", "load_5m", "load_15m"),
+              "memory": ("used_bytes", "total_bytes", "used_percent")}
+    for section, names in fields.items():
+        result[section] = {name: state.get(section, {}).get(name) for name in names}
+    result["network"] = [{name: interface.get(name) for name in
+                          ("interface", "rx_bitrate_kbps", "tx_bitrate_kbps")}
+                         for interface in state.get("network", [])]
+    return result
+
+
 def unique_object(pairs):
     result = {}
     for key, value in pairs:
@@ -289,7 +304,9 @@ def history_csv(data):
                "telemetry.video_frames", "telemetry.video_queue_frames", "telemetry.output_errors",
                "srt.status", "srt.connection", "srt.rtt_ms", "srt.receive_bitrate_kbps",
                *[f"srt.{key}" for key in SRT_COUNTERS], "srt.buffer_bytes", "srt.buffer_ms",
-               "srt.buffer_available_bytes", "srt.latency_ms"]
+               "srt.buffer_available_bytes", "srt.latency_ms",
+               "system.cpu.usage_percent", "system.cpu.load_1m", "system.cpu.load_5m",
+               "system.cpu.load_15m", "system.memory.used_bytes", "system.memory.used_percent"]
     output = io.StringIO(newline="")
     writer = csv.writer(output)
     writer.writerow(columns)

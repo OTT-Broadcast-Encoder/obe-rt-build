@@ -12,7 +12,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'webpanel'))
-from monitoring import Alarms, History, SRTStats, history_csv
+from monitoring import Alarms, History, SRTStats, history_csv, system_sample
 from server import Panel
 
 
@@ -233,6 +233,34 @@ class HistoryTests(unittest.TestCase):
 
 
 class PanelMonitorTests(unittest.TestCase):
+    def test_system_history_continues_while_encoder_is_stopped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            panel = Panel(Path(directory), directory)
+            panel.history = History(Path(directory) / 'monitoring.sqlite3')
+            try:
+                panel._sample_monitoring()
+                panel._sample_monitoring()
+                data, _ = panel.read_history('limit=120')
+                self.assertEqual(len(data['samples']), 2)
+                self.assertTrue(all(not sample['process_alive'] for sample in data['samples']))
+                self.assertEqual(data['samples'][-1]['system']['instance_id'], panel.instance_id)
+                self.assertIn('memory', data['samples'][-1]['system'])
+            finally:
+                panel.close()
+
+    def test_system_archive_uses_allowlist_and_preserves_missing_values(self):
+        resource = {'status': 'live', 'cpu': {'usage_percent': None},
+                    'memory': {'used_bytes': 1024}, 'credentials': 'private-fixture',
+                    'network': [{'interface': 'eth0', 'rx_bitrate_kbps': None,
+                                 'tx_bitrate_kbps': 10, 'address': 'private-fixture'}]}
+        sample = system_sample(resource, 'instance')
+        self.assertNotIn('private-fixture', json.dumps(sample))
+        self.assertIsNone(sample['cpu']['usage_percent'])
+        self.assertIsNone(sample['network'][0]['rx_bitrate_kbps'])
+        self.assertEqual(sample['network'][0]['tx_bitrate_kbps'], 10)
+        resource['status'] = 'stale'
+        self.assertEqual(system_sample(resource, 'instance'), {'status': 'stale', 'instance_id': 'instance'})
+
     def test_restart_closes_previous_incidents_without_claiming_signal_recovery(self):
         with tempfile.TemporaryDirectory() as directory:
             store = History(Path(directory) / 'monitoring.sqlite3')
